@@ -15,11 +15,51 @@ parser.add_argument('psf_file_lores', help='file holding lores psf image')
 parser.add_argument('psf_file_hires', help='file holding hires psf image')
 
 class Sim(dict):
-    def __init__(self, config_file):
-        self.load_config(config_file)
+    def __init__(self, config_name):
+        conf=great_des.files.read_config(name=config_name)
+        self.update(conf)
         self.setup_sim()
+        self.gen_psf_model()
     
+    def gen_image(self, dims, noise=None):
+        """
+        draw from distributions and generate an image
+
+        Add gaussian noise with the specified width
+        """
+    
+        gm=self.gen_gal_model()
+
+        im0 = gm.make_image(dims, nsub=self['nsub'])
+
+        if noise is None:
+            return im0
+        else:
+            nim = numpy.random.normal(scale=noise,
+                                      size=im0.shape)
+            im = im0 + im
+            return im
+
+    def gen_gal_model(self):
+        """
+        draw from distributions and generate the model
+        """
+
+        cen1,cen2 = self.cen_dist.sample()
+        g1a,g2a = self.g_dist.sample2d(1)
+        T=self.T_dist.sample()
+        counts=self.counts_dist.sample()
+
+        pars=[cen1, cen2, g1a[0], g2a[0], T, counts]
+
+        gm=ngmix.GMixModel(pars, self['obj_model'])
+
+        return gm
+
     def setup_sim(self):
+        """
+        load the distributions
+        """
         # object distributions
         self.cen_dist=ngmix.priors.CenPrior(0.0,
                                             0.0,
@@ -35,9 +75,10 @@ class Sim(dict):
         countswidth = counts*self['obj_counts_sigma_frac']
         self.counts_dist=ngmix.priors.LogNormal(counts, countswidth)
 
-        self.generate_psf_model()
-
-    def generate_psf_model(self):
+    def gen_psf_model(self):
+        """
+        generate the psf model for convolutions
+        """
         psf_pars=[0.0, 0.0,
                   self['psf_shape'][0],
                   self['psf_shape'][1],
@@ -45,7 +86,7 @@ class Sim(dict):
                   1.0]
 
 
-        self.true_psf_gmix=ngmix.GMixModel(pars, self['psf_model'])
+        self.true_psf_gmix=ngmix.GMixModel(psf_pars, self['psf_model'])
 
     def load_config(self, fname):
         import yaml
@@ -58,6 +99,8 @@ def main():
     args=parser.parse_args()
 
     sim=Sim(args.config_file)
+
+    im=sim.gen_image([48,48])
 
 if __name__=="__main__":
     main()

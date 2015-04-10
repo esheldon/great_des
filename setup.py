@@ -2,16 +2,13 @@ import os
 import glob
 from distutils.core import setup
 
-scripts=['great3-run','great3-mean-shear','great3-calc-skynoise',
-         'great3-make-condor','great3-make-wq','great3-combine-ranges',
-         'great3-calc-q']
-
 scripts=['great-des-average',
          'great-des-combine',
          'great-des-combine-averaged',
          'great-des-fit',
          'great-des-gen-condor',
-         'great-des-gen-wq']
+         'great-des-gen-wq',
+         'great-des-replace']
 
 scripts=[os.path.join('bin',s) for s in scripts]
 

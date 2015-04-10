@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 
 def get_config_file(**keys):
@@ -17,11 +18,20 @@ def get_config_file(**keys):
 def read_config(**keys):
     import yaml
     fname=get_config_file(**keys)
+    print("reading:",fname)
     data= yaml.load( open(fname) )
 
-    if data['run'] != keys['run']:
-        raise ValueError("run '%s' doesn't "
-                         "match '%s'" % (data['run'],keys['run']))
+    if 'run' in keys:
+        d=data['run']
+        check=keys['run']
+    elif 'name' in keys:
+        d=data['name']
+        check=keys['name']
+    else:
+        raise ValueError("config needs to have 'run' or 'name' in it")
+    if d != check:
+        raise ValueError("run or name '%s' doesn't "
+                         "match '%s'" % (d,check))
     return data
 
 def get_input_dir(**keys):
@@ -302,7 +312,7 @@ def read_prior(**keys):
     from ngmix.gmix import GMixND
 
     fname=get_prior_file(**keys)
-    print "reading:",fname
+    print("reading:",fname)
     data = fitsio.read(fname)
 
     prior = GMixND(data['weights'],
@@ -341,7 +351,7 @@ def read_collated(**keys):
     import fitsio
 
     fname=get_collated_file(**keys)
-    print "reading:",fname
+    print("reading:",fname)
     return fitsio.read(fname)
 
 def read_output(**keys):
@@ -362,7 +372,7 @@ def read_output(**keys):
 
     import fitsio
     fname=get_output_file(**keys)
-    print 'reading:',fname
+    print('reading:',fname)
     data = fitsio.read(fname)
     return data
 
@@ -401,7 +411,7 @@ def read_averaged(**keys):
 
     import fitsio
     fname=get_averaged_file(**keys)
-    print 'reading:',fname
+    print('reading:',fname)
     data = fitsio.read(fname)
     return data
 
