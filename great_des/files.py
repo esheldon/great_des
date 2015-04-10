@@ -1,12 +1,17 @@
 import os
 
 def get_config_file(**keys):
-    run=keys['run']
+    if 'run' in keys:
+        run=keys['run']
+        fname='%s.yaml' % run
+    elif 'name' in keys:
+        name=keys['name']
+        fname='%s.yaml' % name
+    else:
+        raise ValueError("config needs to have 'run' or 'name' in it")
 
-    fname='%s.yaml' % run
-
-    d=os.environ['ESPY_DIR']
-    fname=os.path.join(d, 'great_des','config',fname)
+    d=os.environ['GDES_CONFIG_DIR']
+    fname=os.path.join(d, fname)
     return fname
 
 def read_config(**keys):

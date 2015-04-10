@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+from __future__ import print_function, division
+from argparse import ArgumentParser
+
+import ngmix
+import great_des
+
+parser=ArgumentParser()
+
+parser.add_argument('config_file', help='config name')
+parser.add_argument('input_file',
+                    help='input meds file, the contents of which are to be replaced')
+parser.add_argument('output_file', help='output meds file')
+parser.add_argument('psf_file_lores', help='file holding lores psf image')
+parser.add_argument('psf_file_hires', help='file holding hires psf image')
+
+class Sim(dict):
+    def __init__(self, config_file):
+        self.load_config(config_file)
+        self.setup_sim()
+    
+    def setup_sim(self):
+        # object distributions
+        self.cen_dist=ngmix.priors.CenPrior(0.0,
+                                            0.0,
+                                            self['cen_sigma'],
+                                            self['cen_sigma'])
+        self.g_dist=ngmix.priors.GPriorBA(self['g_sigma'])
+
+        T=self['obj_T_mean']
+        Twidth = T*self['obj_T_sigma_frac']
+        self.T_dist=ngmix.priors.LogNormal(T, Twidth)
+
+        counts=self['obj_counts_mean']
+        countswidth = counts*self['obj_counts_sigma_frac']
+        self.counts_dist=ngmix.priors.LogNormal(counts, countswidth)
+
+        self.generate_psf_model()
+
+    def generate_psf_model(self):
+        psf_pars=[0.0, 0.0,
+                  self['psf_shape'][0],
+                  self['psf_shape'][1],
+                  self['psf_T'],
+                  1.0]
+
+
+        self.true_psf_gmix=ngmix.GMixModel(pars, self['psf_model'])
+
+    def load_config(self, fname):
+        import yaml
+        print("loading:",fname)
+        with open(fname) as fobj:
+            data=yaml.load(fobj)
+            self.update(data)
+
+def main():
+    args=parser.parse_args()
+
+    sim=Sim(args.config_file)
+
+if __name__=="__main__":
+    main()
