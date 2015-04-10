@@ -2,8 +2,12 @@
 from __future__ import print_function, division
 from argparse import ArgumentParser
 
+import numpy
+from numpy import array, sqrt
 import ngmix
 import great_des
+#import meds
+import fitsio
 
 parser=ArgumentParser()
 
@@ -14,6 +18,15 @@ parser.add_argument('output_file', help='output meds file')
 parser.add_argument('psf_file_lores', help='file holding lores psf image')
 parser.add_argument('psf_file_hires', help='file holding hires psf image')
 
+def add_noise(im0, noise):
+    """
+    get a new image with noise added
+    """
+    nim = numpy.random.normal(scale=noise,
+                              size=im0.shape)
+    im = im0 + nim
+    return im
+
 class Sim(dict):
     def __init__(self, config_name):
         conf=great_des.files.read_config(name=config_name)
@@ -21,7 +34,7 @@ class Sim(dict):
         self.setup_sim()
         self.gen_psf_model()
     
-    def gen_image(self, dims, noise=None):
+    def gen_image(self, dims, noise=None, get_model=False):
         """
         draw from distributions and generate an image
 
@@ -32,12 +45,14 @@ class Sim(dict):
 
         im0 = gm.make_image(dims, nsub=self['nsub'])
 
-        if noise is None:
-            return im0
+        if noise is not None:
+            im = add_noise(im0, noise)
         else:
-            nim = numpy.random.normal(scale=noise,
-                                      size=im0.shape)
-            im = im0 + im
+            im=im0
+
+        if get_model:
+            return im, gm
+        else:
             return im
 
     def gen_gal_model(self):
@@ -50,7 +65,8 @@ class Sim(dict):
         T=self.T_dist.sample()
         counts=self.counts_dist.sample()
 
-        pars=[cen1, cen2, g1a[0], g2a[0], T, counts]
+        pars=array([cen1, cen2, g1a[0], g2a[0], T, counts])
+        ngmix.print_pars(pars)
 
         gm=ngmix.GMixModel(pars, self['obj_model'])
 
@@ -95,12 +111,61 @@ class Sim(dict):
             data=yaml.load(fobj)
             self.update(data)
 
+class Replacer(object):
+    def __init__(self, input_file, output_file, sim):
+        self.infile=input_file
+        self.outfile=output_file
+
+        if self.infile==self.outfile:
+            raise ValueError("files match:",self.infile,self.outfile)
+
+        print("from",self.infile,"to",self.outfile)
+
+    def go(self):
+        """
+        run through replacing the images in a new file
+        """
+
+        with fitsio.FITS(self.infile) as fin:
+            od=fin['object_data'][:]
+            ii=fin['image_info'][:]
+            meta=fin['metadata'][:]
+            with fitsio.FITS(self.outfile,'rw',clobber=True) as fout:
+
+                print("copying metadata")
+                fout.write(od, extname='object_data')
+                fout.write(ii, extname='image_info')
+                fout.write(meta, extname='metadata')
+
+                for ext in ['image_cutouts','weight_cutouts','seg_cutouts']:
+                    print("reserving",ext)
+                    dims=fin[ext].get_dims()
+                    tmp=fin[ext][0:10]
+                    dtype=tmp.dtype
+
+                    fout.create_image_hdu(dims=dims,
+                                          dtype=dtype,
+                                          extname=ext)
+
 def main():
     args=parser.parse_args()
 
     sim=Sim(args.config_file)
 
-    im=sim.gen_image([48,48])
+    replacer=Replacer(args.input_file, args.output_file, sim)
+
+    replacer.go()
+
+    '''
+    noise=16.0
+    im0=sim.gen_image([48,48])
+
+    im = add_noise(im0, noise)
+
+    s2n=sqrt( (im0**2).sum() )/noise
+    print("s2n:",s2n)
+    '''
+
 
 if __name__=="__main__":
     main()
