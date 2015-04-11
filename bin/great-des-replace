@@ -177,23 +177,21 @@ class Sim(dict):
         generate the psf model for convolutions
         """
 
-        models=self['psf_models']
-        print("generating:",len(models),"psf models")
+        psf_data=self['psf_data']
+        model = psf_data['model']
 
         psf_list=[]
 
-        for mdata in models:
-            psf_pars=[0.0, 0.0,
-                      mdata['shape'][0],
-                      mdata['shape'][1],
-                      mdata['T'],
-                      1.0]
+        for T in psf_data['Tvals']:
+            for e1 in psf_data['e1vals']:
+                for e2 in psf_data['e2vals']:
+                    psf_pars=[0.0, 0.0, e1, e2, T, 1.0]
 
-            psf_gmix=ngmix.GMixModel(psf_pars,
-                                     mdata['model'])
+                    psf_gmix=ngmix.GMixModel(psf_pars, model)
 
-            psf_list.append( psf_gmix )
+                    psf_list.append( psf_gmix )
 
+        print("generated",len(psf_list),"psfs")
         self.psf_list = psf_list
         self.npsf=len(psf_list)
 
@@ -202,13 +200,16 @@ class Sim(dict):
         """
         write psf models sequentially to file
         """
-        models = self['psf_models']
-        print("writing",len(models),"psfs to file:",fname)
+
+        npsf = self.get_npsf()
+        print("writing",npsf,"psfs to file:",fname)
+
+        dims = self['psf_data']['dims']
 
         with fitsio.FITS(fname,'rw',clobber=True) as fobj:
 
-            for i,mdata in enumerate(models):
-                imdict = self.make_psf_image(mdata['dims'],
+            for i in xrange(npsf):
+                imdict = self.make_psf_image(dims,
                                              psf_index=i,
                                              noise=noise)
                 im=imdict['im'].astype('f4')
@@ -252,8 +253,12 @@ class Replacer(object):
         """
         load data from the truth fits file
         """
+        import esutil as eu
         print("reading:",self.truth_file)
         tdata=fitsio.read(self.truth_file)
+
+        tdata=eu.numpy_util.add_fields(tdata, [('T','f8')])
+
         tdata['id_cosmos']=-1
         tdata['fwhm']=-1
         tdata['psf_fwhm']=-1
@@ -322,11 +327,18 @@ class Replacer(object):
         start=0
         for i in xrange(nobj):
 
+            # arcsec/pixel
+            scale = od['dudrow'][i,0]
+
             box_size=od['box_size'][i]
             dims=[box_size, box_size]
 
             shear=[tdata['g1_true'][i], tdata['g2_true'][i]]
-            imdict = sim.make_gal_image(dims, shear,
+            #psf_T = 2*(tdata['psf_fwhm']/2.35/scale)**2
+            #psfdata={'shape':[tdata['psf_e1'],tdata['psf_e2']],
+            #         'T':psf_T}
+            imdict = sim.make_gal_image(dims,
+                                        shear,
                                         noise=self.skynoise)
 
             row,col=imdict['gm0'].get_cen()
@@ -358,14 +370,15 @@ class Replacer(object):
         tdata['shape_e1'][i] = pars[2]
         tdata['shape_e2'][i] = pars[3]
 
+        tdata['T'][i] = pars[4]
         tdata['flux'][i] = pars[5]
-
         tdata['snr'][i] = imdict['s2n']
 
-        psf_shape = self.sim['psf_models'][psf_index]['shape']
+        pg=self.sim.psf_list[psf_index]
+        g1,g2,T= pg.get_g1g2T()
 
-        tdata['psf_e1'][i] = psf_shape[0]
-        tdata['psf_e2'][i] = psf_shape[1]
+        tdata['psf_e1'][i] = g1
+        tdata['psf_e2'][i] = g2
 
 
     def _fill_ext(self, fin, fout, ext):
