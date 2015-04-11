@@ -14,17 +14,18 @@ parser.add_argument('newrun', help='new run')
 
 parser.add_argument('--noisefree', action='store_true', help='noisefree?')
 
-_template="""
-#!/bin/bash
-#BSUB -q long
+
+
+# note it inherits the environment from the caller
+#. ~/.bashrc
+#. ~/g3work1-setup.sh
+_template="""#!/bin/bash
+#BSUB -q medium
 #BSUB -J {job_name}
 #BSUB -oo ./{job_name}.oe
 #BSUB -R "linux64 && rhel60 && scratch > 2"
 
 echo "working on host: $(hostname)"
-
-. ~/.bashrc
-. ~/g3work1-setup.sh
 
 config={config}
 oldrun={oldrun}
@@ -33,7 +34,7 @@ newrun={newrun}
 fnum={fnum}
 gnum={gnum}
 
-great-des-replace {extra} --fpack $config $oldrun $newrun $fnum $gnum
+great-des-replace {extra} $config $oldrun $newrun $fnum $gnum
 """
 
 def get_text(args, gnum, fnum):

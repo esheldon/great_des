@@ -23,7 +23,6 @@ parser.add_argument('fnum', type=int, help='file number')
 parser.add_argument('gnum', type=int, help='shear number')
 
 parser.add_argument('--noisefree', action='store_true', help='noisefree?')
-parser.add_argument('--fpack', action='store_true', help='fpack the data')
 
 FPACK_DIMS = [10240,1]
 
@@ -303,12 +302,24 @@ class Replacer(object):
         self._write_new_truth_file()
 
     def run_fpack(self):
+        """
+        fpack.  
+        """
+
+        fzname = self.outfile+'.fz'
+        if os.path.exists(fzname):
+            print("removing:",fzname)
+            os.remove(fzname)
+
         cmd="fpack -t {fpack_dim0},{fpack_dim1} {fname}"
         cmd=cmd.format(fpack_dim0=FPACK_DIMS[0],
                        fpack_dim1=FPACK_DIMS[1],
                        fname=self.outfile)
         print(cmd)
-        os.system(cmd)
+        ret=os.system(cmd)
+
+        if ret != 0:
+            print("error fpacking")
 
     def _write_new_truth_file(self):
         """
@@ -486,8 +497,6 @@ def main():
                       sim)
 
     replacer.go()
-
-    if args.fpack:
-        replacer.run_fpack()
+    replacer.run_fpack()
 
 main()
