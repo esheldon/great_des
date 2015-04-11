@@ -34,7 +34,7 @@ newrun={newrun}
 fnum={fnum}
 gnum={gnum}
 
-great-des-replace {extra} $config $oldrun $newrun $fnum $gnum
+python -u $(which great-des-replace) {extra} $config $oldrun $newrun $fnum $gnum
 """
 
 def get_text(args, gnum, fnum):
