@@ -1,7 +1,26 @@
 from __future__ import print_function
 import os
 
+
+def get_data_dir():
+    """
+    the main data directory
+    """
+    d=os.environ['GDES_DATA_DIR']
+    return d
+
+def get_config_dir():
+    """
+    the main data directory
+    """
+    d=os.environ['GDES_CONFIG_DIR']
+    return d
+
+
 def get_config_file(**keys):
+    """
+    get a config file path
+    """
     if 'run' in keys:
         run=keys['run']
         fname='%s.yaml' % run
@@ -11,11 +30,14 @@ def get_config_file(**keys):
     else:
         raise ValueError("config needs to have 'run' or 'name' in it")
 
-    d=os.environ['GDES_CONFIG_DIR']
+    d=get_config_dir()
     fname=os.path.join(d, fname)
     return fname
 
 def read_config(**keys):
+    """
+    read a config file
+    """
     import yaml
     fname=get_config_file(**keys)
     print("reading:",fname)
@@ -41,10 +63,45 @@ def get_input_dir(**keys):
     gdrun: keyword
         The great des run e.g. nbc-sva1-001
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des', keys['gdrun'], 'data')
+    d=get_data_dir()
+    d=os.path.join(d, keys['gdrun'], 'data')
     #d=os.path.join(h, 'lensing','great-des', keys['gdrun'])
     return d
+
+def get_replace_lsf_dir(**keys):
+    """
+    parameters
+    ----------
+    gdrun: keyword
+        The great des run e.g. nbc-sva1-001
+    """
+    d=get_data_dir()
+    d=os.path.join(d, keys['gdrun'], 'lsf')
+    return d
+
+def get_replace_lsf_file(**keys):
+    """
+    parameters
+    ----------
+    gdrun: keyword
+        The great des run e.g. nbc-sva1-001
+    gnum: keyword
+        The shear number
+    fnum: keyword
+        The file number
+    """
+
+    d=get_replace_lsf_dir(**keys)
+
+    noisefree=keys.get("noisefree",False)
+    if noisefree and ftype=='meds':
+        fname='rep.%(fnum)03i.g%(gnum)02i.noisefree.lsf'
+    else:
+        fname='rep.%(fnum)03i.g%(gnum)02i.lsf'
+    fname=fname % keys
+    fname=os.path.join(d, fname)
+    return fname
+
 
 def get_input_file(**keys):
     """
@@ -130,6 +187,59 @@ def get_psf_file(**keys):
 
     return os.path.join(d,fname)
 
+def count_fnums(**keys):
+    """
+    count the number of files per shear
+
+    parameters
+    ----------
+    gdrun: keyword
+        The gdrun e.g. nbc-sva1-001
+
+    noisefree: bool
+        If true, return path to noisefree data; meds only.
+    """
+
+    count=0
+    while True:
+        f=get_input_file(ftype='meds',
+                         gnum=0,
+                         fnum=count,
+                         **keys)
+        if os.path.exists(f):
+            count += 1
+        else:
+            break
+
+    return count
+
+def count_gnums(**keys):
+    """
+    count the number of shears
+
+    parameters
+    ----------
+    gdrun: keyword
+        The gdrun e.g. nbc-sva1-001
+
+    noisefree: bool
+        If true, return path to noisefree data; meds only.
+    """
+
+    count=0
+    while True:
+        f=get_input_file(ftype='meds',
+                         gnum=count,
+                         fnum=0,
+                         **keys)
+        if os.path.exists(f):
+            count += 1
+        else:
+            break
+
+    return count
+
+
 def get_output_dir(**keys):
     """
     parameters
@@ -137,8 +247,8 @@ def get_output_dir(**keys):
     run: keyword
         The processing run
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des',keys['run'], 'output')
+    d=get_data_dir()
+    d=os.path.join(d, keys['run'], 'output')
     return d
 
 def get_prior_dir(**keys):
@@ -148,8 +258,8 @@ def get_prior_dir(**keys):
     run: keyword
         The processing run
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des',keys['run'], 'prior')
+    d=get_data_dir()
+    d=os.path.join(d, keys['run'], 'prior')
     return d
 
 
@@ -160,8 +270,8 @@ def get_collated_dir(**keys):
     run: keyword
         The processing run
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des',keys['run'], 'collated')
+    d=get_data_dir()
+    d=os.path.join(d, keys['run'], 'collated')
     return d
 
 
@@ -172,8 +282,8 @@ def get_condor_dir(**keys):
     run: keyword
         The processing run
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des',keys['run'],'condor')
+    d=get_data_dir()
+    d=os.path.join(d, keys['run'],'condor')
     return d
 
 def get_condor_master(**keys):
@@ -222,8 +332,8 @@ def get_wq_dir(**keys):
     run: keyword
         The processing run
     """
-    h=os.environ['HOME']
-    d=os.path.join(h, 'lensing','great-des',keys['run'],'wq')
+    d=get_data_dir()
+    d=os.path.join(d,keys['run'],'wq')
     return d
 
 def get_wq_file(**keys):

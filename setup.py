@@ -8,7 +8,9 @@ scripts=['great-des-average',
          'great-des-fit',
          'great-des-gen-condor',
          'great-des-gen-wq',
-         'great-des-replace']
+         'great-des-replace',
+         'great-des-make-repscripts',
+        ]
 
 scripts=[os.path.join('bin',s) for s in scripts]
 

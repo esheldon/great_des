@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function, division
-from argparse import ArgumentParser
+
+import os
+from pprint import pprint
 
 import numpy
 from numpy import array, sqrt
@@ -9,20 +11,21 @@ import great_des
 #import meds
 import fitsio
 
+from argparse import ArgumentParser
 parser=ArgumentParser()
 
-parser.add_argument('config_file', help='config name')
+parser.add_argument('config_name', help='config name')
 
-parser.add_argument('input_file',
-                    help='input meds file, the contents of which are to be replaced')
-parser.add_argument('truth_file',
-                    help='the original truth file')
+parser.add_argument('oldrun', help='run to replace')
+parser.add_argument('newrun', help='new run')
 
-parser.add_argument('output_file', help='output meds file')
-parser.add_argument('new_truth_file', help='output truth file')
+parser.add_argument('fnum', type=int, help='file number')
+parser.add_argument('gnum', type=int, help='shear number')
 
-parser.add_argument('psf_file_lores', help='file holding lores psf image')
-parser.add_argument('psf_file_hires', help='file holding hires psf image')
+parser.add_argument('--noisefree', action='store_true', help='noisefree?')
+parser.add_argument('--fpack', action='store_true', help='fpack the data')
+
+FPACK_DIMS = [10240,1]
 
 def add_noise(im0, noise):
     """
@@ -238,7 +241,6 @@ class Replacer(object):
         self.new_truth_file=new_truth_file
         self.sim=sim
 
-
         if self.infile==self.outfile:
             raise ValueError("files match:",self.infile,self.outfile)
         if self.truth_file==self.new_truth_file:
@@ -257,7 +259,8 @@ class Replacer(object):
         print("reading:",self.truth_file)
         tdata=fitsio.read(self.truth_file)
 
-        tdata=eu.numpy_util.add_fields(tdata, [('T','f8')])
+        fields=[('psf_T','f8'),('T','f8')]
+        tdata=eu.numpy_util.add_fields(tdata, fields)
 
         tdata['id_cosmos']=-1
         tdata['fwhm']=-1
@@ -298,6 +301,14 @@ class Replacer(object):
                 fout.write(meta, extname='metadata')
 
         self._write_new_truth_file()
+
+    def run_fpack(self):
+        cmd="fpack -t {fpack_dim0},{fpack_dim1} {fname}"
+        cmd=cmd.format(fpack_dim0=FPACK_DIMS[0],
+                       fpack_dim1=FPACK_DIMS[1],
+                       fname=self.outfile)
+        print(cmd)
+        os.system(cmd)
 
     def _write_new_truth_file(self):
         """
@@ -379,6 +390,7 @@ class Replacer(object):
 
         tdata['psf_e1'][i] = g1
         tdata['psf_e2'][i] = g2
+        tdata['psf_T'][i] = T
 
 
     def _fill_ext(self, fin, fout, ext):
@@ -416,20 +428,66 @@ class Replacer(object):
                                   dtype=dtype,
                                   extname=ext)
 
+def makedirs_fromfile(fname):
+    dir=os.path.dirname(fname)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+def make_alldirs(args):
+    makedirs_fromfile(args.output_file)
+    makedirs_fromfile(args.new_truth_file)
+    makedirs_fromfile(args.psf_file_lores)
+    makedirs_fromfile(args.psf_file_hires)
+
+def get_fnames(args):
+    keys={'gdrun':args.oldrun,
+          'fnum':args.fnum,
+          'gnum':args.gnum,
+          'noisefree':args.noisefree}
+    fnames={}
+    fnames['input_file']=great_des.files.get_input_file(ftype='meds',
+                                                        **keys)
+    fnames['truth_file']=great_des.files.get_input_file(ftype='truth',
+                                              **keys)
+
+    keys['gdrun'] = args.newrun
+    fnames['output_file']=great_des.files.get_input_file(ftype='meds',
+                                                         **keys)
+    fnames['new_truth_file']=great_des.files.get_input_file(ftype='truth',
+                                                            **keys)
+    
+    fnames['psf_file_lores']=great_des.files.get_psf_file(ftype='truth',
+                                                          res='lores',
+                                                          **keys)
+    fnames['psf_file_hires']=great_des.files.get_psf_file(ftype='truth',
+                                                          res='hires',
+                                                          **keys)
+
+    d=os.path.dirname(fnames['output_file'])
+    if not os.path.exists(d):
+        print("making directory",d)
+        os.makedirs(d)
+
+    return fnames
+
 def main():
     args=parser.parse_args()
 
-    sim=Sim(args.config_file)
-    sim.write_lores_psfs(args.psf_file_lores)
+    fnames=get_fnames(args)
+    pprint(fnames)
 
-    replacer=Replacer(args.input_file,
-                      args.truth_file,
-                      args.output_file,
-                      args.new_truth_file,
+    sim=Sim(args.config_name)
+    sim.write_lores_psfs(fnames['psf_file_lores'])
+
+    replacer=Replacer(fnames['input_file'],
+                      fnames['truth_file'],
+                      fnames['output_file'],
+                      fnames['new_truth_file'],
                       sim)
 
     replacer.go()
 
+    if args.fpack:
+        replacer.run_fpack()
 
-if __name__=="__main__":
-    main()
+main()
