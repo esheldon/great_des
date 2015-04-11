@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+from __future__ import print_function, division
+import os
+
+import great_des
+
+from argparse import ArgumentParser
+parser=ArgumentParser()
+
+parser.add_argument('config_name', help='config name')
+
+parser.add_argument('oldrun', help='run to replace')
+parser.add_argument('newrun', help='new run')
+
+parser.add_argument('--noisefree', action='store_true', help='noisefree?')
+
+_template="""
+#!/bin/bash
+#BSUB -q long
+#BSUB -J {job_name}
+#BSUB -oo ./{job_name}.oe
+#BSUB -R "linux64 && rhel60 && scratch > 2"
+
+echo "working on host: $(hostname)"
+
+. ~/.bashrc
+. ~/g3work1-setup.sh
+
+config={config}
+oldrun={oldrun}
+newrun={newrun}
+
+fnum={fnum}
+gnum={gnum}
+
+great-des-replace {extra} --fpack $config $oldrun $newrun $fnum $gnum
+"""
+
+def get_text(args, gnum, fnum):
+
+    if args.noisefree:
+        extra='--noisefree'
+    else:
+        extra=''
+
+    text=_template.format(job_name='%02d-%03d' % (gnum, fnum),
+                          config=args.config_name,
+                          oldrun=args.oldrun,
+                          newrun=args.newrun,
+                          fnum=fnum,
+                          gnum=gnum,
+                          extra=extra)
+
+    return text
+
+def write_script(args, gnum, fnum):
+    text=get_text(args, gnum, fnum)
+    fname=great_des.files.get_replace_lsf_file(gdrun=args.newrun,
+                                               gnum=gnum,
+                                               fnum=fnum)
+    d=os.path.dirname(fname)
+    if not os.path.exists(d):
+        os.makedirs(d)
+
+    print("writing:",fname)
+    with open(fname,'w') as fobj:
+        fobj.write(text)
+
+def main():
+    args=parser.parse_args()
+
+    # make sure config exists
+    conf=great_des.files.read_config(name=args.config_name)
+
+    ng = great_des.files.count_gnums(gdrun=args.oldrun,
+                                     noisefree=args.noisefree)
+    nf = great_des.files.count_fnums(gdrun=args.oldrun,
+                                     noisefree=args.noisefree)
+    print("ng:",ng,"nf:",nf)
+
+    for gi in xrange(ng):
+        for fi in xrange(nf):
+            write_script(args, gi, fi)
+
+main()
