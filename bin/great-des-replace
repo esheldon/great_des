@@ -12,9 +12,15 @@ import fitsio
 parser=ArgumentParser()
 
 parser.add_argument('config_file', help='config name')
+
 parser.add_argument('input_file',
                     help='input meds file, the contents of which are to be replaced')
+parser.add_argument('truth_file',
+                    help='the original truth file')
+
 parser.add_argument('output_file', help='output meds file')
+parser.add_argument('new_truth_file', help='output truth file')
+
 parser.add_argument('psf_file_lores', help='file holding lores psf image')
 parser.add_argument('psf_file_hires', help='file holding hires psf image')
 
@@ -27,50 +33,123 @@ def add_noise(im0, noise):
     im = im0 + nim
     return im
 
+
 class Sim(dict):
     def __init__(self, config_name):
         conf=great_des.files.read_config(name=config_name)
         self.update(conf)
         self.setup_sim()
-        self.gen_psf_model()
     
-    def gen_image(self, dims, noise=None, get_model=False):
+    def get_npsf(self):
+        """
+        number of psf models
+        """
+        return self.npsf
+
+    def make_psf_image(self,
+                       dims,
+                       psf_index=None,
+                       noise=None):
         """
         draw from distributions and generate an image
 
         Add gaussian noise with the specified width
         """
     
-        gm=self.gen_gal_model()
 
-        im0 = gm.make_image(dims, nsub=self['nsub'])
+        row=(dims[0]-1.)/2.
+        col=(dims[1]-1.)/2.
+
+        imdict = self.get_psf_model(psf_index=psf_index)
+
+        gmix=imdict['gmix']
+        gmix.set_cen(row, col)
+
+        imdict['im0'] = imdict['gmix'].make_image(dims, nsub=self['nsub'])
+
+        imdict['noise'] = noise
 
         if noise is not None:
-            im = add_noise(im0, noise)
+            im = add_noise(imdict['im0'], noise)
         else:
-            im=im0
+            im = imdict['im0']
 
-        if get_model:
-            return im, gm
+        imdict['im'] = im
+
+        return imdict
+
+    def get_psf_model(self, psf_index=None):
+        """
+        get a psf model, random if psf_index is not sent
+        """
+        if psf_index is None:
+            psf_index = numpy.random.randint(0,self.npsf)
+        psf_gmix = self.psf_list[psf_index].copy()
+
+        return {'gmix':psf_gmix, 'psf_index':psf_index}
+
+    def make_gal_image(self, dims, shear, psf_index=None, noise=None):
+        """
+        draw from distributions and generate an image
+
+        Add gaussian noise with the specified width
+        """
+    
+        row=(dims[0]-1.)/2.
+        col=(dims[1]-1.)/2.
+
+        imdict = self.make_gal_model(row, col, shear)
+
+        imdict['im0'] = imdict['gm'].make_image(dims, nsub=self['nsub'])
+
+        imdict['noise'] = noise
+
+        if noise is not None:
+            im = add_noise(imdict['im0'], noise)
+            s2n = sqrt( (imdict['im0']**2).sum())/noise
         else:
-            return im
+            im = im0
+            s2n = -9999.e9
 
-    def gen_gal_model(self):
+        imdict['im'] = im
+        imdict['s2n'] = s2n
+
+        return imdict        
+
+    def make_gal_model(self, row, col, shear, psf_index=None):
         """
         draw from distributions and generate the model
         """
 
-        cen1,cen2 = self.cen_dist.sample()
+        psf_dict = self.get_psf_model(psf_index=psf_index)
+
+        drow,dcol= self.cen_dist.sample()
         g1a,g2a = self.g_dist.sample2d(1)
         T=self.T_dist.sample()
         counts=self.counts_dist.sample()
 
-        pars=array([cen1, cen2, g1a[0], g2a[0], T, counts])
-        ngmix.print_pars(pars)
+        pars_noshear=array([row+drow,
+                            col+dcol,
+                            g1a[0],
+                            g2a[0],
+                            T,
+                            counts])
 
-        gm=ngmix.GMixModel(pars, self['obj_model'])
+        shape=ngmix.Shape(g1a[0], g2a[0])
+        shape.shear(shear[0], shear[1])
+        pars=pars_noshear.copy()
+        pars[2] = shape.g1
+        pars[3] = shape.g2
 
-        return gm
+        gm0=ngmix.GMixModel(pars, self['obj_model'])
+
+        gm = gm0.convolve(psf_dict['gmix'])
+
+        return {'gm':gm,
+                'gm0':gm0,
+                'pars_noshear':pars_noshear,
+                'pars':pars,
+                'psf_index':psf_dict['psf_index']}
 
     def setup_sim(self):
         """
@@ -91,18 +170,51 @@ class Sim(dict):
         countswidth = counts*self['obj_counts_sigma_frac']
         self.counts_dist=ngmix.priors.LogNormal(counts, countswidth)
 
-    def gen_psf_model(self):
+        self.make_psf_models()
+
+    def make_psf_models(self):
         """
         generate the psf model for convolutions
         """
-        psf_pars=[0.0, 0.0,
-                  self['psf_shape'][0],
-                  self['psf_shape'][1],
-                  self['psf_T'],
-                  1.0]
+
+        models=self['psf_models']
+        print("generating:",len(models),"psf models")
+
+        psf_list=[]
+
+        for mdata in models:
+            psf_pars=[0.0, 0.0,
+                      mdata['shape'][0],
+                      mdata['shape'][1],
+                      mdata['T'],
+                      1.0]
+
+            psf_gmix=ngmix.GMixModel(psf_pars,
+                                     mdata['model'])
+
+            psf_list.append( psf_gmix )
+
+        self.psf_list = psf_list
+        self.npsf=len(psf_list)
 
 
-        self.true_psf_gmix=ngmix.GMixModel(psf_pars, self['psf_model'])
+    def write_lores_psfs(self, fname, noise=None):
+        """
+        write psf models sequentially to file
+        """
+        models = self['psf_models']
+        print("writing",len(models),"psfs to file:",fname)
+
+        with fitsio.FITS(fname,'rw',clobber=True) as fobj:
+
+            for i,mdata in enumerate(models):
+                imdict = self.make_psf_image(mdata['dims'],
+                                             psf_index=i,
+                                             noise=noise)
+                im=imdict['im'].astype('f4')
+                fobj.write(im)
+
+
 
     def load_config(self, fname):
         import yaml
@@ -112,15 +224,45 @@ class Sim(dict):
             self.update(data)
 
 class Replacer(object):
-    def __init__(self, input_file, output_file, sim):
+    def __init__(self,
+                 input_file,
+                 truth_file,
+                 output_file,
+                 new_truth_file,
+                 sim):
+
+        self.truth_file=truth_file
         self.infile=input_file
         self.outfile=output_file
+        self.new_truth_file=new_truth_file
+        self.sim=sim
+
 
         if self.infile==self.outfile:
             raise ValueError("files match:",self.infile,self.outfile)
+        if self.truth_file==self.new_truth_file:
+            raise ValueError("files match:",
+                             self.truth_file,self.new_truth_file)
+
+        self.load_truth_data()
 
         print("from",self.infile,"to",self.outfile)
 
+    def load_truth_data(self):
+        """
+        load data from the truth fits file
+        """
+        print("reading:",self.truth_file)
+        tdata=fitsio.read(self.truth_file)
+        tdata['id_cosmos']=-1
+        tdata['fwhm']=-1
+        tdata['psf_fwhm']=-1
+        tdata['zphot']=-1
+        tdata['mean_rgpp_rp'] = -1
+        tdata['to_use'] = 1
+
+        self.truth_data=tdata
+    
     def go(self):
         """
         run through replacing the images in a new file
@@ -130,41 +272,150 @@ class Replacer(object):
             od=fin['object_data'][:]
             ii=fin['image_info'][:]
             meta=fin['metadata'][:]
+
+            # here we assume all same errors
+            weights=fin['weight_cutouts'][0:10]
+            self.skynoise = 1.0/sqrt(weights[0])
+
             with fitsio.FITS(self.outfile,'rw',clobber=True) as fout:
 
-                print("copying metadata")
+                self._make_images(fin, fout)
+
+                # these are copied straight over
+                self._fill_ext(fin, fout, 'weight_cutouts')
+                self._fill_ext(fin, fout, 'seg_cutouts')
+
+                self._write_galaxies(fout, od)
+
+                print("writing metadata")
                 fout.write(od, extname='object_data')
                 fout.write(ii, extname='image_info')
                 fout.write(meta, extname='metadata')
 
-                for ext in ['image_cutouts','weight_cutouts','seg_cutouts']:
-                    print("reserving",ext)
-                    dims=fin[ext].get_dims()
-                    tmp=fin[ext][0:10]
-                    dtype=tmp.dtype
+        self._write_new_truth_file()
 
-                    fout.create_image_hdu(dims=dims,
-                                          dtype=dtype,
-                                          extname=ext)
+    def _write_new_truth_file(self):
+        """
+        write the new truth data
+        """
+        print("writing truth data:",self.new_truth_file)
+        fitsio.write(self.new_truth_file,
+                     self.truth_data,
+                     clobber=True)
+
+    def _write_galaxies(self, fout, od):
+        """
+        write galaxies
+
+        also update the object_data and truth_data
+        """
+
+        tdata = self.truth_data
+
+        hdu = fout['image_cutouts']
+
+        print("generating and writing galaxies")
+
+        sim=self.sim
+
+        nobj=od.size
+        start=0
+        for i in xrange(nobj):
+
+            box_size=od['box_size'][i]
+            dims=[box_size, box_size]
+
+            shear=[tdata['g1_true'][i], tdata['g2_true'][i]]
+            imdict = sim.make_gal_image(dims, shear,
+                                        noise=self.skynoise)
+
+            row,col=imdict['gm0'].get_cen()
+            od['cutout_row'][i,0] = row
+            od['cutout_col'][i,0] = col
+
+            self._fill_truth(i, imdict)
+
+            pars=imdict['pars']
+
+            imravel = imdict['im'].ravel()
+
+            hdu.write(imravel, start=start)
+
+            start += box_size**2
+
+            if (i % 1000) == 0:
+                print("    object: %d/%d" % (i+1,nobj))
+                ngmix.print_pars(pars)
+
+    def _fill_truth(self, i, imdict):
+        tdata=self.truth_data
+
+        pars=imdict['pars_noshear']
+        psf_index = imdict['psf_index']
+
+        tdata['id'][i] = i
+        tdata['id_psf'][i] = psf_index
+        tdata['shape_e1'][i] = pars[2]
+        tdata['shape_e2'][i] = pars[3]
+
+        tdata['flux'][i] = pars[5]
+
+        tdata['snr'][i] = imdict['s2n']
+
+        psf_shape = self.sim['psf_models'][psf_index]['shape']
+
+        tdata['psf_e1'][i] = psf_shape[0]
+        tdata['psf_e2'][i] = psf_shape[1]
+
+
+    def _fill_ext(self, fin, fout, ext):
+        """
+        just copy the data straight
+        """
+        print("filling:",ext)
+
+        dims=fin[ext].get_dims()
+        npix = dims[0]
+        nchunks=1000
+        nper = npix/nchunks
+        nleft = npix % nchunks
+
+        for i in xrange(nchunks):
+            #print("    %d/%d" % (i+1,nchunks))
+            start=i*nper
+            if i==(nchunks-1):
+                stop=start+nper+nleft
+            else:
+                stop=start+nper
+
+            data = fin[ext][start:stop]
+
+            fout[ext].write(data, start=start)
+
+    def _make_images(self, fin, fout):
+        for ext in ['image_cutouts','weight_cutouts','seg_cutouts']:
+            print("reserving",ext)
+            dims=fin[ext].get_dims()
+            tmp=fin[ext][0:10]
+            dtype=tmp.dtype
+
+            fout.create_image_hdu(dims=dims,
+                                  dtype=dtype,
+                                  extname=ext)
 
 def main():
     args=parser.parse_args()
 
     sim=Sim(args.config_file)
+    sim.write_lores_psfs(args.psf_file_lores)
 
-    replacer=Replacer(args.input_file, args.output_file, sim)
+    replacer=Replacer(args.input_file,
+                      args.truth_file,
+                      args.output_file,
+                      args.new_truth_file,
+                      sim)
 
     replacer.go()
-
-    '''
-    noise=16.0
-    im0=sim.gen_image([48,48])
-
-    im = add_noise(im0, noise)
-
-    s2n=sqrt( (im0**2).sum() )/noise
-    print("s2n:",s2n)
-    '''
 
 
 if __name__=="__main__":
