@@ -44,7 +44,8 @@ def get_text(args, gnum, fnum):
     else:
         extra=''
 
-    text=_template.format(job_name='%02d-%03d' % (gnum, fnum),
+    job_name="rep.%03d.g%02d" % (fnum, gnum)
+    text=_template.format(job_name=job_name,
                           config=args.config_name,
                           oldrun=args.oldrun,
                           newrun=args.newrun,

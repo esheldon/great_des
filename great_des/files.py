@@ -119,7 +119,7 @@ def get_input_file(**keys):
     noisefree: bool
         If true, return path to noisefree data; meds only.
 
-    ext: string, optional
+    meds_ext: string, optional
         Extension, e.g. fits of fits.fz
     """
     d=get_input_dir(**keys)
@@ -127,16 +127,22 @@ def get_input_file(**keys):
     noisefree=keys.get("noisefree",False)
     ftype=keys['ftype']
 
-    keys['ext']=keys.get('ext','fits')
 
     front=get_front(**keys)
 
     if noisefree and ftype=='meds':
-        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.noisefree.%(ext)s'
+        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.noisefree'
     else:
-        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.%(ext)s'
+        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i'
 
     bname=bname % keys
+
+    if ftype=='meds':
+        ext=keys.get('meds_ext','fits')
+    else:
+        ext='fits'
+
+    bname='%s.%s' % (bname, ext)
 
     fname=os.path.join(d, bname)
     return fname
@@ -327,6 +333,58 @@ def get_condor_file(**keys):
     fname=os.path.join(d, fname)
 
     return fname
+
+def get_lsf_dir(**keys):
+    """
+    parameters
+    ----------
+    run: keyword
+        The processing run
+    """
+    d=get_data_dir()
+    d=os.path.join(d, keys['run'],'lsf')
+    return d
+
+def get_lsf_master(**keys):
+    """
+    parameters
+    ----------
+    run
+    """
+    d=get_lsf_dir(**keys)
+
+    fname='master.sh'
+    fname=os.path.join(d, fname)
+
+    return fname
+
+
+def get_lsf_file(**keys):
+    """
+    parameters
+    ----------
+    run
+    fnum
+    gnum
+    start
+    end
+    missing
+    """
+    d=get_lsf_dir(**keys)
+
+    missing=keys.get('missing',False)
+    if missing:
+        keys['back']='-missing.lsf'
+    else:
+        keys['back']='.lsf'
+
+    fname='%(run)s-%(fnum)03d-g%(gnum)02d-%(start)05d-%(end)05d%(back)s'
+    fname=fname % keys
+
+    fname=os.path.join(d, fname)
+
+    return fname
+
 
 
 

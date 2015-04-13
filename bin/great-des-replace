@@ -24,6 +24,8 @@ parser.add_argument('gnum', type=int, help='shear number')
 
 parser.add_argument('--noisefree', action='store_true', help='noisefree?')
 
+parser.add_argument('--psf', action='store_true', help='write the psf file')
+
 FPACK_DIMS = [10240,1]
 
 def add_noise(im0, noise):
@@ -488,15 +490,17 @@ def main():
     pprint(fnames)
 
     sim=Sim(args.config_name)
-    sim.write_lores_psfs(fnames['psf_file_lores'])
 
-    replacer=Replacer(fnames['input_file'],
-                      fnames['truth_file'],
-                      fnames['output_file'],
-                      fnames['new_truth_file'],
-                      sim)
+    if args.psf:
+        sim.write_lores_psfs(fnames['psf_file_lores'])
+    else:
+        replacer=Replacer(fnames['input_file'],
+                          fnames['truth_file'],
+                          fnames['output_file'],
+                          fnames['new_truth_file'],
+                          sim)
 
-    replacer.go()
-    replacer.run_fpack()
+        replacer.go()
+        replacer.run_fpack()
 
 main()

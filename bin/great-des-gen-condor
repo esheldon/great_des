@@ -17,6 +17,8 @@ parser.add_argument('--missing',action='store_true',
 parser.add_argument('--nperfile',default=1000, type=int,
                     help="number per file")
 
+parser.add_argument('--tempdir', help="tempdir to use")
+
 
 
 _master_template="""#!/bin/bash
@@ -55,11 +57,14 @@ config_file="%(config_file)s"
 
 logfile=${output_file}.log
 
-# temporary log file, to be transferred later
-if [[ -n $_CONDOR_SCRATCH_DIR ]]; then
-    tmpdir=$_CONDOR_SCRATCH_DIR
-else
-    tmpdir=$TMPDIR
+tempdir="%(tempdir)s"
+if [[ $tempdir == "" ]]; then
+    # temporary log file, to be transferred later
+    if [[ -n $_CONDOR_SCRATCH_DIR ]]; then
+        tmpdir=$_CONDOR_SCRATCH_DIR
+    else
+        tmpdir=$TMPDIR
+    fi
 fi
 
 cd $tmpdir
@@ -116,9 +121,10 @@ Queue
 
 
 class CondorMaker(object):
-    def __init__(self, run, jobs_per_file, missing=False):
+    def __init__(self, run, jobs_per_file, missing=False, tempdir=None):
         self.run=run
         self.missing=missing
+        self.tempdir=tempdir
 
         self.conf=great_des.files.read_config(run=run)
         self.config_file=great_des.files.get_config_file(run=run)
@@ -135,8 +141,14 @@ class CondorMaker(object):
 
     def make_master(self):
         print("writing:",self.master_file)
+
+        if self.tempdir is None:
+            tempdir=""
+        else:
+            tempdir=self.tempdir
+
         with open(self.master_file,'w') as fobj:
-            text=_master_template % {'config_file': self.config_file}
+            text=_master_template % {'config_file': self.config_file,'tempdir':tempdir}
             fobj.write(text)
         
         os.system('chmod 755 %s' % self.master_file)
@@ -149,7 +161,7 @@ class CondorMaker(object):
         nf=conf['nf']
         nper=conf['nper']
 
-        ext=self.conf.get('ext','fits')
+        meds_ext=self.conf.get('meds_ext','fits')
 
         filenum=0
         job_count=0
@@ -202,7 +214,7 @@ class CondorMaker(object):
                                                    gnum=gnum,
                                                    start=start,
                                                    end=end,
-                                                   ext=ext)
+                                                   meds_ext=meds_ext)
                     if self.missing:
                         if os.path.exists(output_file):
                             continue
@@ -244,7 +256,7 @@ def main():
     if gvals is not None:
         gvals=[int(g) for g in gvals.split(',')]
 
-    cm = CondorMaker(args.run, args.nperfile, missing=args.missing)
+    cm = CondorMaker(args.run, args.nperfile, missing=args.missing, tempdir=args.tempdir)
     cm.make_condor(gvals=gvals)
     cm.make_master()
 

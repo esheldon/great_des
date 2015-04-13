@@ -43,6 +43,8 @@ def load_data(run, select=True, **keys):
 
 def select_good(data,
                 min_T=None,
+                T_range=None,
+                flux_range=None,
                 min_arate=MIN_ARATE,
                 max_arate=MAX_ARATE,
                 min_s2n=MIN_S2N,
@@ -88,6 +90,24 @@ def select_good(data,
         if w.size != data.size:
             print("    kept %d/%d from log_T > %g" % (w.size, data.size, min_T))
             logic = logic & elogic
+
+    if T_range is not None:
+        elogic = (data['log_T'] > T_range[0]) & (data['log_T'] < T_range[1])
+        w,=where(elogic)
+        if w.size != data.size:
+            tup=(w.size, data.size, T_range[0], T_range[1])
+            print("    kept %d/%d from log_T in [%g,%g]" % tup)
+            logic = logic & elogic
+
+    if flux_range is not None:
+        elogic = (data['log_flux'] > flux_range[0]) & (data['log_flux'] < flux_range[1])
+        w,=where(elogic)
+        if w.size != data.size:
+            tup=(w.size, data.size, flux_range[0], flux_range[1])
+            print("    kept %d/%d from log_flux in [%g,%g]" % tup)
+            logic = logic & elogic
+
+
 
     if 'arate' in data.dtype.names:
         elogic = (data['arate'] > min_arate) & (data['arate'] < max_arate)
