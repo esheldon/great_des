@@ -149,6 +149,8 @@ class CondorMaker(object):
         nf=conf['nf']
         nper=conf['nper']
 
+        ext=self.conf.get('ext','fits')
+
         filenum=0
         job_count=0
         this_job_count=0
@@ -199,7 +201,8 @@ class CondorMaker(object):
                     text,output_file=self.get_text(fnum=fnum,
                                                    gnum=gnum,
                                                    start=start,
-                                                   end=end)
+                                                   end=end,
+                                                   ext=ext)
                     if self.missing:
                         if os.path.exists(output_file):
                             continue

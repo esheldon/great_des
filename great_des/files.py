@@ -118,18 +118,23 @@ def get_input_file(**keys):
 
     noisefree: bool
         If true, return path to noisefree data; meds only.
+
+    ext: string, optional
+        Extension, e.g. fits of fits.fz
     """
     d=get_input_dir(**keys)
 
     noisefree=keys.get("noisefree",False)
     ftype=keys['ftype']
 
+    keys['ext']=keys.get('ext','fits')
+
     front=get_front(**keys)
 
     if noisefree and ftype=='meds':
-        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.noisefree.fits'
+        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.noisefree.%(ext)s'
     else:
-        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.fits'
+        bname=front+'.%(ftype)s.%(fnum)03i.g%(gnum)02i.%(ext)s'
 
     bname=bname % keys
 
