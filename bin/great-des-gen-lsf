@@ -1,0 +1,228 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import os,sys
+from sys import stderr
+
+import great_des
+from great_des import files
+
+from argparse import ArgumentParser
+parser = ArgumentParser()
+
+parser.add_argument('run',help="great des run identifier")
+parser.add_argument('--gvals',help="g values to process, csv")
+parser.add_argument('--missing',action='store_true',
+                    help="only write jobs for missing files")
+
+parser.add_argument('-q','--queue',default='long', help="queue to use")
+
+
+_master_template="""#!/bin/bash
+function run_fit {
+    echo "host: $(hostname)"
+    echo "will write to file: $output"
+
+    great-des-fit \\
+        --work-dir=$tmpdir                \\
+        --obj-range ${start},${end}       \\
+        ${config_file}                    \\
+        ${meds_file}                      \\
+        ${truth_file}                     \\
+        ${psf_file}                       \\
+        ${output_file}
+
+    status=$?
+
+    echo "time: $SECONDS"
+
+    if [[ $status != "0" ]]; then
+        echo "error running great des: $status"
+    fi
+
+    return $status
+}
+
+meds_file=$1
+truth_file=$2
+psf_file=$3
+output_file=$4
+start=$5
+end=$6
+
+config_file="%(config_file)s"
+
+logfile=${output_file}.log
+
+tmpdir="/scratch/esheldon/${LSB_JOBID}"
+
+mkdir -p ${tmpdir}
+echo "cd $tmpdir"
+cd $tmpdir
+
+tmplog=$(basename $logfile)
+
+run_fit &> ${tmplog}
+status=$?
+
+echo "moving log file ${tmplog} -> ${logfile}" >> ${tmplog}
+
+# errors go to the jobs stderr
+mv -fv "${tmplog}" "${logfile}" 1>&2
+status2=$?
+
+if [[ $status2 != "0" ]]; then
+    # this error message will go to main error file
+    echo "error ${status2} moving log to: ${logfile}" 1>&2
+
+    status=$status2
+fi
+
+cd $HOME
+
+echo "removing temporary directory"
+rm -rfv ${tmpdir}
+
+exit $status
+"""
+
+
+_lsf_template="""#!/bin/bash
+#BSUB -q %(queue)s
+#BSUB -J %(job_name)s
+#BSUB -n 1
+#BSUB -oo ./%(job_name)s.oe
+#BSUB -R "linux64 && rhel60 && scratch > 2"
+
+echo "working on host: $(hostname)"
+
+%(master)s \\
+        %(meds_file)s \\
+        %(truth_file)s \\
+        %(psf_file)s \\
+        %(output_file)s \\
+        %(start)s %(end)s
+"""
+
+
+
+class LSFMaker(object):
+    def __init__(self, run, queue, missing=False):
+        self.run=run
+        self.missing=missing
+
+        self.conf=great_des.files.read_config(run=run)
+        self.conf['queue']=queue
+
+        self.config_file=great_des.files.get_config_file(run=run)
+
+        self.master_file=great_des.files.get_lsf_master(run=run)
+
+        self.make_output_dirs()
+
+    def make_master(self):
+        print("writing:",self.master_file)
+
+        with open(self.master_file,'w') as fobj:
+            text=_master_template % {'config_file': self.config_file}
+            fobj.write(text)
+        
+        os.system('chmod 755 %s' % self.master_file)
+
+    def make_lsf(self, gvals=None):
+
+        conf=self.conf
+        gdrun=conf['gdrun']
+        ng=conf['ng']
+        nf=conf['nf']
+        nper=conf['nper']
+
+        meds_ext=self.conf.get('meds_ext','fits')
+
+        job_count=0
+
+        if gvals is None:
+            gvals = list(range(ng))
+
+        ngvals_use=len(gvals)
+        print("processing gvals:",gvals)
+
+        for ignum,gnum in enumerate(gvals):
+            print("    gnum: %d  %d/%d" % (gnum,ignum+1,ngvals_use))
+            for fnum in xrange(nf):
+                if (fnum % 10) == 0:
+                    print("        fnum: %d/%d" % (fnum+1,nf))
+
+                if ignum==0 and fnum==0:
+                    low,high = files.get_chunk_ranges(gdrun=gdrun,
+                                                      fnum=fnum,
+                                                      gnum=gnum,
+                                                      nper=nper)
+
+                nr = len(low)
+                for i in xrange(nr):
+
+                    start=low[i]
+                    end=high[i]
+
+                    lsf_file=great_des.files.get_lsf_file(run=self.run,
+                                                          fnum=fnum,
+                                                          gnum=gnum,
+                                                          start=start,
+                                                          end=end,
+                                                          missing=self.missing)
+
+                    print(lsf_file)
+
+                    text,output_file=self.get_text(fnum=fnum,
+                                                   gnum=gnum,
+                                                   start=start,
+                                                   end=end,
+                                                   meds_ext=meds_ext)
+                    if self.missing:
+                        if os.path.exists(output_file):
+                            continue
+
+                    with open(lsf_file,'w') as fobj: 
+                        fobj.write(text)
+
+                    job_count += 1
+
+        print("total jobs:",job_count)
+
+    def get_text(self, **keys):
+
+        keys.update( self.conf )
+
+        keys['master'] = self.master_file
+        keys['meds_file']=files.get_input_file(ftype="meds", **keys)
+        keys['truth_file']=files.get_input_file(ftype="truth", **keys)
+        keys['psf_file']=files.get_psf_file(**keys)
+        keys['output_file'] = files.get_output_file(**keys)
+
+        keys['job_name']='%(run)s-%(fnum)03i-g%(gnum)02i-%(start)05d-%(end)05d' % keys
+
+        text = _lsf_template % keys
+
+        return text, keys['output_file']
+
+    def make_output_dirs(self):
+        lsf_dir=files.get_lsf_dir(run=self.run)
+        output_dir = files.get_output_dir(run=self.run)
+
+        for dir in [lsf_dir,output_dir]:
+            if not os.path.exists( dir ):
+                print('making dir:',dir)
+                os.makedirs(dir)
+
+def main():
+    args = parser.parse_args()
+
+    gvals=args.gvals
+    if gvals is not None:
+        gvals=[int(g) for g in gvals.split(',')]
+
+    cm = LSFMaker(args.run, args.queue, missing=args.missing)
+    cm.make_lsf(gvals=gvals)
+    cm.make_master()
+
+main()
