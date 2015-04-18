@@ -45,10 +45,12 @@ def select_good(data,
                 min_T=None,
                 T_range=None,
                 flux_range=None,
-                min_arate=MIN_ARATE,
-                max_arate=MAX_ARATE,
-                min_s2n=MIN_S2N,
-                min_Ts2n=MIN_TS2N,
+                min_arate=None,
+                max_arate=None,
+                min_s2n=None,
+                min_s2n_r=None,
+                min_Ts2n=None,
+                min_Ts2n_r=None,
                 fracdev_err_max=None,
                 cut_fracdev_exact=False,
                 fracdev_range=None,
@@ -65,24 +67,43 @@ def select_good(data,
         print("    kept %d/%d from flags" % (w.size, data.size))
         logic = logic & elogic
 
-    elogic = (data['s2n_w'] > min_s2n)
-    w,=where(elogic)
-    if w.size != data.size:
-        print("    kept %d/%d from s2n > %g" % (w.size, data.size, min_s2n))
-        logic = logic & elogic
-
-    elogic = (data['T_s2n'] > min_Ts2n)
-    w,=where(elogic)
-    if w.size != data.size:
-        print("    kept %d/%d from Ts2n > %g" % (w.size, data.size, min_Ts2n))
-        logic = logic & elogic
-
     g = numpy.sqrt( data['g'][:,0]**2 + data['g'][:,1]**2 )
     elogic = (g < max_g)
     w,=where(elogic)
     if w.size != data.size:
         print("    kept %d/%d from g < %g" % (w.size, data.size, max_g))
         logic = logic & elogic
+
+    if min_s2n is not None:
+        elogic = (data['s2n_w'] > min_s2n)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from s2n > %g" % (w.size, data.size, min_s2n))
+            logic = logic & elogic
+
+    if min_s2n_r is not None:
+        elogic = (data['s2n_r'] > min_s2n_r)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from s2n_r > %g" % (w.size, data.size, min_s2n_r))
+            logic = logic & elogic
+
+
+    if min_Ts2n is not None:
+        elogic = (data['T_s2n'] > min_Ts2n)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from Ts2n > %g" % (w.size, data.size, min_Ts2n))
+            logic = logic & elogic
+
+    if min_Ts2n_r is not None:
+        elogic = (data['T_s2n_r'] > min_Ts2n_r)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from Ts2n_r > %g" % (w.size, data.size, min_Ts2n_r))
+            logic = logic & elogic
+
+
 
     if min_T is not None:
         elogic = (data['log_T'] > min_T)

@@ -171,6 +171,7 @@ class MedsFitBase(dict):
                      max_pars,
                      prior=self['prior'],
                      ntry=max_pars['ntry'])
+        boot.set_round_s2n(prior=self['prior'])
 
     def get_bootstrapper(self):
         """
@@ -537,6 +538,9 @@ class MedsFitBase(dict):
         
         data['T_s2n'][dindex] = Ts2n
 
+        data['s2n_r'][dindex] = res['s2n_r']
+        data['T_s2n_r'][dindex] = res['T_s2n_r']
+
         data['s2n_w'][dindex] = res['s2n_w']
         data['chi2per'][dindex] = res['chi2per']
         data['dof'][dindex] = res['dof']
@@ -579,11 +583,14 @@ class MedsFitBase(dict):
             (n('flux_err'),'f8'),
             (n('T'),'f8'),
             (n('T_err'),'f8'),
-            ('T_s2n','f8'),
             ('g','f8',2),
             ('g_cov','f8',(2,2)),
 
             ('s2n_w','f8'),
+            ('s2n_r','f8'),
+            ('T_s2n','f8'),
+            ('T_s2n_r','f8'),
+
             ('chi2per','f8'),
             ('dof','f8'),
            ]
@@ -649,8 +656,8 @@ class MedsFitMax(MedsFitBase):
         res=self.gal_fitter.get_result()
 
         if 's2n_w' in res:
-            tup=(res['s2n_w'],res['nfev'],res['chi2per'])
-            print("    s2n: %.1f nfev: %d chi2per: %.3f" % tup)
+            tup=(res['s2n_w'],res['s2n_r'],res['nfev'],res['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f nfev: %d chi2per: %.3f" % tup)
 
 
     def make_dtype(self):
@@ -815,8 +822,8 @@ class MedsFitISample(MedsFitShearBase):
         res=self.gal_fitter.get_result()
 
         if 's2n_w' in res:
-            tup=(res['s2n_w'],res['chi2per'])
-            print("    s2n: %.1f chi2per: %.3f" % tup)
+            tup=(res['s2n_w'],res['s2n_r'],res['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
 
     def copy_galaxy_result(self):
         """
