@@ -538,7 +538,8 @@ class MedsFitBase(dict):
         
         data['T_s2n'][dindex] = Ts2n
 
-        data['s2n_r'][dindex] = res['s2n_r']
+        data['s2n_r'][dindex]   = res['s2n_r']
+        data[n('T_r')]          = res['round_pars'][4]
         data['T_s2n_r'][dindex] = res['T_s2n_r']
 
         data['s2n_w'][dindex] = res['s2n_w']
@@ -589,6 +590,7 @@ class MedsFitBase(dict):
             ('s2n_w','f8'),
             ('s2n_r','f8'),
             ('T_s2n','f8'),
+            (n('T_r'),'f8'),
             ('T_s2n_r','f8'),
 
             ('chi2per','f8'),
