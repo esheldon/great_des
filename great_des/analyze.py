@@ -19,11 +19,13 @@ SHEARS={0: [ 0.05,  0.  ],
         6: [-0.03536, -0.03536],
         7: [-0.03536,  0.03536]}
 
-def load_data(run, select=True, **keys):
+def load_data(run, select=True, trim_cols=False, **keys):
     """
     load all g collated files into a list of structs
     """
     import fitsio
+    import esutil as eu 
+
     conf=files.read_config(run=run)
 
     dlist=[]
@@ -37,6 +39,11 @@ def load_data(run, select=True, **keys):
             print("    selecting")
             data=select_good(data, **keys)
 
+        if trim_cols:
+            keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
+                       'efficiency','neff',
+                       's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r']
+            data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
         dlist.append(data)
     return dlist
 
@@ -178,7 +185,7 @@ def get_weights(data):
     wts=1.0/(2*SN**2 + csum)
     return wts
 
-def fit_m_c(dlist, show=False, doprint=False):
+def fit_m_c(dlist, show=False, doprint=False, get_plt=False):
     """
     get m and c
     """
@@ -188,10 +195,14 @@ def fit_m_c(dlist, show=False, doprint=False):
     gtrue = numpy.zeros( (ng,2) )
     gdiff = gtrue.copy()
     gdiff_err = gtrue.copy()
+
+    nobj=0
     for i,data in enumerate(dlist):
         gtrue[i,:],gmean,gcov=calc_gmean(data)
         gdiff[i,:] = gmean - gtrue[i,:]
         gdiff_err[i,:] = sqrt(diag(gcov))
+
+        nobj += data.size
 
     lf1=fitting.fit_line(gtrue[:,0], gdiff[:,0], yerr=gdiff_err[:,0])
     lf2=fitting.fit_line(gtrue[:,1], gdiff[:,1], yerr=gdiff_err[:,1])
@@ -204,7 +215,8 @@ def fit_m_c(dlist, show=False, doprint=False):
     m2,c2 = lf2.pars
     m2err,c2err = lf2.perr
 
-    res={'m1':m1,
+    res={'nobj':nobj,
+         'm1':m1,
          'm1err':m1err,
          'm2':m2,
          'm2err':m2err,
@@ -215,17 +227,21 @@ def fit_m_c(dlist, show=False, doprint=False):
 
     if doprint:
         mess="""
-m1: %(m1)g +/- %(m1err)g
-m2: %(m2)g +/- %(m2err)g
-c1: %(c1)g +/- %(c1err)g
-c2: %(c2)g +/- %(c2err)g""".strip()
+nobj: %(nobj)d
+m1: %(m1).3g +/- %(m1err).3g
+m2: %(m2).3g +/- %(m2err).3g
+c1: %(c1).3g +/- %(c1err).3g
+c2: %(c2).3g +/- %(c2err).3g""".strip()
         mess = mess % res
         print(mess)
 
     if show:
         plt.show()
 
-    return res
+    if get_plt:
+        return res, plt
+    else:
+        return res
 
 def plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=None):
     """
@@ -247,8 +263,10 @@ def plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=None):
     pts1.label=r'$g_1$'
     pts2.label=r'$g_2$'
 
-    key=biggles.PlotKey(0.1, 0.9, [pts1,pts2], halign='left')
+    key=biggles.PlotKey(0.9, 0.9, [pts1,pts2], halign='right')
     
+    z=biggles.Curve( [gtrue[:,0].min(), gtrue[:,0].max()], [0,0] )
+    plt.add( z )
     plt.add( pts1, perr1, pts2, perr2, key )
 
     if fitters is not None:
