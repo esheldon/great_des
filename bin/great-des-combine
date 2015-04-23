@@ -16,6 +16,7 @@ from great_des import files
 
 from optparse import OptionParser
 parser = OptionParser(__doc__)
+parser.add_option('--allow-missing',action='store_true')
 
 def read_output(**conf):
     data0 = files.read_output(**conf)
@@ -37,6 +38,15 @@ def read_output(**conf):
 
     return data
 
+def check_file(fname, ftype, allow_missing):
+    if not os.path.exists(fname):
+        if not allow_missing:
+            raise RuntimeError("missing file: '%s'" % fname)
+        else:
+            print("    skipping missing '%s' '%s'" % (ftype,fname))
+            return False
+    return True
+
 def main():
     options, args = parser.parse_args(sys.argv[1:])
     if len(args) < 2:
@@ -45,6 +55,7 @@ def main():
 
     run=args[0]
     gnum=int(args[1])
+    allow_missing=options.allow_missing
 
     conf=files.read_config(run=run)
 
@@ -72,6 +83,10 @@ def main():
             else:
                 add_true_e=False
 
+            ifile=files.get_input_file(ftype='meds', **conf)
+            if not check_file(ifile,'MEDS',allow_missing):
+                continue
+
             low,high = files.get_chunk_ranges(**conf)
             n=len(low)
 
@@ -82,6 +97,10 @@ def main():
 
                 #data0 = files.read_output(**conf)
                 #data=eu.numpy_util.add_fields(data0, [('shear_true','f8',2)])
+
+                fname=files.get_output_file(**conf)
+                if not check_file(fname,'output',allow_missing):
+                    continue
 
                 data=read_output(**conf)
                 tbeg=low[i]
