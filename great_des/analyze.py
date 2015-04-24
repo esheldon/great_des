@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy
-from numpy import diag, sqrt, newaxis, where, log10, ones
+from numpy import diag, sqrt, newaxis, where, log10, ones, zeros
 from . import files
 
 MIN_ARATE=0.3
@@ -58,6 +58,8 @@ def select_good(data,
                 min_s2n_r=None,
                 min_Ts2n=None,
                 min_Ts2n_r=None,
+                s2n_r_range=None,
+                Ts2n_r_range=None,
                 fracdev_err_max=None,
                 cut_fracdev_exact=False,
                 fracdev_range=None,
@@ -95,6 +97,15 @@ def select_good(data,
             print("    kept %d/%d from s2n_r > %g" % (w.size, data.size, min_s2n_r))
             logic = logic & elogic
 
+    if s2n_r_range is not None:
+        rng=s2n_r_range
+        elogic = (data['s2n_r'] > rng[0]) & (data['s2n_r'] < rng[1])
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from s2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
+            logic = logic & elogic
+
+
 
     if min_Ts2n is not None:
         elogic = (data['T_s2n'] > min_Ts2n)
@@ -110,7 +121,13 @@ def select_good(data,
             print("    kept %d/%d from Ts2n_r > %g" % (w.size, data.size, min_Ts2n_r))
             logic = logic & elogic
 
-
+    if Ts2n_r_range is not None:
+        rng=Ts2n_r_range
+        elogic = (data['T_s2n_r'] > rng[0]) & (data['T_s2n_r'] < rng[1])
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from Ts2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
+            logic = logic & elogic
 
     if min_T is not None:
         elogic = (data['log_T'] > min_T)
@@ -208,7 +225,6 @@ def fit_m_c(dlist, show=False, doprint=False, get_plt=False):
     lf2=fitting.fit_line(gtrue[:,1], gdiff[:,1], yerr=gdiff_err[:,1])
     fitters=[lf1,lf2]
 
-    plt=plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=[lf1,lf2])
 
     m1,c1 = lf1.pars
     m1err,c1err = lf1.perr
@@ -235,13 +251,112 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
         mess = mess % res
         print(mess)
 
-    if show:
-        plt.show()
+    if get_plt or show:
+        plt=plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=[lf1,lf2])
+
+        if show:
+            plt.show()
 
     if get_plt:
         return res, plt
     else:
         return res
+
+
+def fit_m_c_s2n(dlist, s2n_minvals, field='s2n_r'):
+    """
+    fit m and c vs s/n
+    """
+    
+    def select_dlist(dlist, s2n_min):
+        dlist2=[]
+        for d in dlist:
+            w,=where(d[field] > s2n_min)
+            dlist2.append(d[w])
+        return dlist2
+
+    dtype=[('s2n_min','f8'),
+           ('nobj','i8'),
+           ('m1','f8'),
+           ('m1err','f8'),
+           ('m2','f8'),
+           ('m2err','f8'),
+           ('c1','f8'),
+           ('c1err','f8'),
+           ('c2','f8'),
+           ('c2err','f8')]
+           
+    out=zeros(len(s2n_minvals), dtype=dtype)
+
+    for i,s2n_min in enumerate(s2n_minvals):
+        dlist2=select_dlist(dlist, s2n_min)
+
+        res=fit_m_c(dlist2, doprint=True)
+        out['s2n_min'][i] = s2n_min
+        out['nobj'][i] = res['nobj']
+        out['m1'][i] = res['m1']
+        out['m1err'][i] = res['m1err']
+        out['m2'][i] = res['m2']
+        out['m2err'][i] = res['m2err']
+
+        out['c1'][i] = res['c1']
+        out['c1err'][i] = res['c1err']
+        out['c2'][i] = res['c2']
+        out['c2err'][i] = res['c2err']
+
+    return out
+
+def plot_m_c_s2n(data, field='s2n_r', show=False):
+    import biggles
+    tab=biggles.Table(2,1)
+
+
+    m1c=biggles.Points(data['s2n_min'], data['m1'],
+                      type='filled circle', color='blue')
+    m1c.label='m1'
+    m1errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['m1'], data['m1err'],
+                                       color='blue')
+
+    m2c=biggles.Points(data['s2n_min'], data['m2'],
+                      type='filled circle', color='red')
+    m2c.label='m2'
+    m2errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['m2'], data['m2err'],
+                                       color='red')
+    mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
+
+
+    c1c=biggles.Points(data['s2n_min'], data['c1'],
+                      type='filled circle', color='blue')
+    c1c.label='c1'
+    c1errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['c1'], data['c1err'],
+                                       color='blue')
+
+    c2c=biggles.Points(data['s2n_min'], data['c2'],
+                      type='filled circle', color='red')
+    c2c.label='c2'
+    c2errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['c2'], data['c2err'],
+                                       color='red')
+    ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
+
+    zc=biggles.Curve(data['s2n_min'], data['s2n_min']*0)
+
+    mplt=biggles.FramedPlot()
+    mplt.xlabel=field
+    mplt.ylabel='m'
+    mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
+
+    cplt=biggles.FramedPlot()
+    cplt.xlabel=field
+    cplt.ylabel='c'
+    cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
+
+    tab[0,0] = mplt
+    tab[1,0] = cplt
+
+    if show:
+        tab.show()
+    return tab
+
 
 def plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=None):
     """
@@ -299,7 +414,7 @@ def calc_gmean(data):
 
     gmeas[0]=g1sum/g1sensum
     gmeas[1]=g2sum/g2sensum
-    print("gmeas: ",gmeas)
+    print("gmeas:  ",gmeas)
     '''
 
     wa=wts[:,newaxis]
@@ -311,6 +426,7 @@ def calc_gmean(data):
     #print(jdsum.shape)
 
     gmeas,gcov=jackknife.wjackknife(vsum=jdsum, wsum=jwsum)
+    #print("gmeas j:",gmeas)
 
     return gtrue, gmeas, gcov
 
