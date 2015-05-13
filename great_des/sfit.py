@@ -131,11 +131,13 @@ class MedsFitBase(dict):
 
         psf_pars=self['psf_pars']
 
-        boot.fit_psf(psf_pars['model'],
-                     Tguess=self['psf_Tguess'],
-                     ntry=psf_pars['ntry'])
+        boot.fit_psfs(psf_pars['model'],
+                      Tguess=self['psf_Tguess'],
+                      ntry=psf_pars['ntry'])
 
-        self.psf_fitter=self.boot.get_psf_fitter()
+        #self.psf_fitter=self.boot.get_psf_fitter()
+        # for multi-obs this will be the latest
+        self.psf_fitter=self.boot.psf_fitter
 
         self.copy_psf_result()
 
@@ -162,22 +164,48 @@ class MedsFitBase(dict):
         """
         do a maximum likelihood fit
         """
+        from ngmix.gexceptions import BootGalFailure
         boot=self.boot
 
         model=self['model_pars']['model']
         max_pars=self['max_pars']
 
+        cov_pars=self['cov_pars']
+
+        # we want the no-g-prior estimate for round Ts2n
+        print("fitting without g prior")
+        try:
+            boot.fit_max(model,
+                         max_pars,
+                         prior=self['prior_gflat'],
+                         ntry=max_pars['ntry'])
+            boot.try_replace_cov(cov_pars)
+            boot.set_round_s2n()
+            flat_res=boot.get_max_fitter().get_result()
+
+        except BootGalFailure:
+            print("    failed to fit max with flat prior")
+            flat_res=None
+
+        # now with prior
+        print("fitting with g prior")
         boot.fit_max(model,
                      max_pars,
                      prior=self['prior'],
                      ntry=max_pars['ntry'])
-        boot.set_round_s2n(prior=self['prior'])
+        boot.try_replace_cov(cov_pars)
+
+        if flat_res is not None:
+            res=boot.get_max_fitter().get_result()
+            res['flat_res']={}
+            res['flat_res'].update(flat_res)
+
 
     def get_bootstrapper(self):
         """
         get the bootstrapper for fitting psf through galaxy
         """
-        boot = get_bootstrapper(self.psf_obs, self.obs)
+        boot = get_bootstrapper(self.obs)
         return boot
 
     def make_psf_observation(self):
@@ -240,7 +268,8 @@ class MedsFitBase(dict):
                 weight = self.meds.get_cutout(self.mindex, 0, type='weight')
 
         jacob=self.get_jacobian()
-        self.obs = Observation(image, weight=weight, jacobian=jacob)
+        self.obs = Observation(image, weight=weight, jacobian=jacob,
+                               psf=self.psf_obs)
 
 
     def get_psf_guesser(self):
@@ -511,7 +540,7 @@ class MedsFitBase(dict):
         else:
             data['flags'][dindex]=0
 
-        jacob=self.boot.gal_obs.jacobian
+        jacob=self.boot.mb_obs_list[0][0].jacobian
         jrow, jcol = jacob.get_cen()
         scale = jacob.get_scale()
         row = jrow + res['pars'][0]/scale
@@ -537,9 +566,17 @@ class MedsFitBase(dict):
         
         data['T_s2n'][dindex] = Ts2n
 
-        data['s2n_r'][dindex]   = res['s2n_r']
-        data[n('T_r')][dindex]          = res['round_pars'][4]
-        data['T_s2n_r'][dindex] = res['T_s2n_r']
+        # results from flat g prior max like fit
+        mres=self.boot.get_max_fitter().get_result()
+        if 'flat_res' in mres:
+            fres=mres['flat_res']
+            data['flags_r'][dindex] = fres['round_flags']
+            data[n('T_r')][dindex]  = fres['round_pars'][4]
+            data['s2n_r'][dindex]   = fres['s2n_r']
+            data['T_s2n_r'][dindex] = fres['T_s2n_r']
+
+            tup=(Ts2n,fres['T_s2n_r'])
+            print("    Ts2n: %.2f Ts2n_r: %.2f" % tup)
 
         data['s2n_w'][dindex] = res['s2n_w']
         data['chi2per'][dindex] = res['chi2per']
@@ -587,9 +624,11 @@ class MedsFitBase(dict):
             ('g_cov','f8',(2,2)),
 
             ('s2n_w','f8'),
-            ('s2n_r','f8'),
             ('T_s2n','f8'),
+
+            ('flags_r','i4'),
             (n('T_r'),'f8'),
+            ('s2n_r','f8'),
             ('T_s2n_r','f8'),
 
             ('chi2per','f8'),
@@ -620,6 +659,14 @@ class MedsFitBase(dict):
         data[n('flux_err')] = PDEFVAL
         data[n('T')] = DEFVAL
         data[n('T_err')] = PDEFVAL
+
+        data['T_s2n'] = PDEFVAL
+
+        data['flags_r'] = NO_ATTEMPT
+        data[n('T_r')] = DEFVAL
+        data['s2n_r'] = DEFVAL
+        data['T_s2n_r'] = DEFVAL
+
         data['g'] = DEFVAL
         data['g_cov'] = PDEFVAL
 
@@ -708,8 +755,7 @@ class CompositeMedsFitMax(MedsFitMax):
         """
         
         # keywords pass on fracdev_prior and fracdev_grid
-        boot = get_bootstrapper(self.psf_obs,
-                                self.obs,
+        boot = get_bootstrapper(self.obs,
                                 type='composite',
                                 **self)
         return boot
@@ -820,10 +866,16 @@ class MedsFitISample(MedsFitShearBase):
     def print_galaxy_result(self):
         super(MedsFitISample,self).print_galaxy_result()
         res=self.gal_fitter.get_result()
+        mres=self.boot.get_max_fitter().get_result()
 
         if 's2n_w' in res:
-            tup=(res['s2n_w'],res['s2n_r'],res['chi2per'])
-            print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
+            if 'flat_res' in mres:
+                fres=mres['flat_res']
+                tup=(res['s2n_w'],fres['s2n_r'],res['chi2per'])
+                print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
+            else:
+                tup=(res['s2n_w'],res['T_s2n'],res['chi2per'])
+                print("    s2n: %.1f Ts2n: %.2f chi2per: %.3f" % tup)
 
     def copy_galaxy_result(self):
         """
@@ -886,8 +938,7 @@ class CompositeMedsFitISample(MedsFitISample):
         """
         
         # keywords pass on fracdev_prior and fracdev_grid
-        boot = get_bootstrapper(self.psf_obs,
-                                self.obs,
+        boot = get_bootstrapper(self.obs,
                                 type='composite',
                                 **self)
         return boot
@@ -1029,7 +1080,7 @@ class MaxRunner(object):
 
         self.fitter=fitter
 
-def get_bootstrapper(psf_obs, gal_obs, type='boot', **keys):
+def get_bootstrapper(obs, type='boot', **keys):
     from ngmix.bootstrap import Bootstrapper
     from ngmix.bootstrap import CompositeBootstrapper
     from ngmix.bootstrap import BestBootstrapper
@@ -1037,22 +1088,19 @@ def get_bootstrapper(psf_obs, gal_obs, type='boot', **keys):
     use_logpars=True
     if type=='boot':
         #print("    loading bootstrapper")
-        boot=Bootstrapper(psf_obs,
-                          gal_obs,
+        boot=Bootstrapper(obs,
                           use_logpars=use_logpars)
     elif type=='composite':
         #print("    loading composite bootstrapper")
         fracdev_prior = keys['fracdev_prior']
         fracdev_grid  = keys['fracdev_grid']
-        boot=CompositeBootstrapper(psf_obs,
-                                   gal_obs,
+        boot=CompositeBootstrapper(obs,
                                    fracdev_prior=fracdev_prior,
                                    fracdev_grid=fracdev_grid,
                                    use_logpars=use_logpars)
     elif type=='best': 
         #print("    loading best bootstrapper")
-        boot=BestBootstrapper(self.psf_obs,
-                              self.gal_obs,
+        boot=BestBootstrapper(obs,
                               use_logpars=use_logpars)
     else:
         raise ValueError("bad bootstrapper type: '%s'" % type)
