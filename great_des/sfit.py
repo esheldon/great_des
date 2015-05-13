@@ -100,7 +100,7 @@ class MedsFitBase(dict):
         boot=self.get_bootstrapper()
 
         # find the center and reset the jacobian
-        boot.find_cen()
+        #boot.find_cen()
 
         self.boot=boot
 
@@ -177,7 +177,6 @@ class MedsFitBase(dict):
         """
         get the bootstrapper for fitting psf through galaxy
         """
-        from great3.sfit import get_bootstrapper
         boot = get_bootstrapper(self.psf_obs, self.obs)
         return boot
 
@@ -707,7 +706,6 @@ class CompositeMedsFitMax(MedsFitMax):
         """
         get the bootstrapper for fitting psf through galaxy
         """
-        from great3.sfit import get_bootstrapper
         
         # keywords pass on fracdev_prior and fracdev_grid
         boot = get_bootstrapper(self.psf_obs,
@@ -886,7 +884,6 @@ class CompositeMedsFitISample(MedsFitISample):
         """
         get the bootstrapper for fitting psf through galaxy
         """
-        from great3.sfit import get_bootstrapper
         
         # keywords pass on fracdev_prior and fracdev_grid
         boot = get_bootstrapper(self.psf_obs,
@@ -1032,4 +1029,32 @@ class MaxRunner(object):
 
         self.fitter=fitter
 
+def get_bootstrapper(psf_obs, gal_obs, type='boot', **keys):
+    from ngmix.bootstrap import Bootstrapper
+    from ngmix.bootstrap import CompositeBootstrapper
+    from ngmix.bootstrap import BestBootstrapper
 
+    use_logpars=True
+    if type=='boot':
+        #print("    loading bootstrapper")
+        boot=Bootstrapper(psf_obs,
+                          gal_obs,
+                          use_logpars=use_logpars)
+    elif type=='composite':
+        #print("    loading composite bootstrapper")
+        fracdev_prior = keys['fracdev_prior']
+        fracdev_grid  = keys['fracdev_grid']
+        boot=CompositeBootstrapper(psf_obs,
+                                   gal_obs,
+                                   fracdev_prior=fracdev_prior,
+                                   fracdev_grid=fracdev_grid,
+                                   use_logpars=use_logpars)
+    elif type=='best': 
+        #print("    loading best bootstrapper")
+        boot=BestBootstrapper(self.psf_obs,
+                              self.gal_obs,
+                              use_logpars=use_logpars)
+    else:
+        raise ValueError("bad bootstrapper type: '%s'" % type)
+
+    return boot

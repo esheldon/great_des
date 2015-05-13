@@ -418,11 +418,13 @@ def run_sfitter(files, conf, options, checkpoint_data=None):
         g_prior_pars=jp['g_prior_pars']
         g_prior = ngmix.priors.GPriorGreatDES(pars=jp['g_prior_pars'],
                                               gmax=1.0)
+        g_prior_flat=ngmix.priors.ZDisk2D(1.0)
 
         TF_prior=great_des.files.read_prior(run=jp['TF_prior_run'],
                                             partype=jp['TF_partype'])
 
         conf['prior']=JointPriorSimpleHybrid(cen_prior, g_prior, TF_prior)
+        conf['prior_flat']=JointPriorSimpleHybrid(cen_prior, g_prior_flat, TF_prior)
 
         if 'fracdev_prior_run' in jp:
             conf['fracdev_prior']=great_des.files.read_prior(run=jp['fracdev_prior_run'],
