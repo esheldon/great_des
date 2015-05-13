@@ -8,6 +8,7 @@ from numpy import array, sqrt, zeros, log, exp, arange
 import ngmix
 from ngmix.fitting import print_pars
 from ngmix.gexceptions import GMixMaxIterEM, GMixRangeError
+from ngmix.gexceptions import BootPSFFailure,BootGalFailure
 from ngmix.observation import Observation
 from ngmix.jacobian import Jacobian
 
@@ -115,11 +116,11 @@ class MedsFitBase(dict):
                 self.copy_galaxy_result()
                 self.print_galaxy_result()
 
-            except GalFailure:
+            except BootGalFailure:
                 print("    galaxy fitting failed")
                 self.data['flags'][dindex] = GAL_FIT_FAILURE
 
-        except PSFFailure:
+        except BootPSFFailure:
             print("    psf fitting failed")
             self.data['flags'][dindex] = PSF_FIT_FAILURE
 
@@ -164,7 +165,6 @@ class MedsFitBase(dict):
         """
         do a maximum likelihood fit
         """
-        from ngmix.gexceptions import BootGalFailure
         boot=self.boot
 
         model=self['model_pars']['model']
