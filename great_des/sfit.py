@@ -790,7 +790,7 @@ class MedsFitISample(MedsFitShearBase):
         ipars=self['isample_pars']
         self.boot.isample(ipars, prior=self['prior'])
 
-        self.boot.set_round_s2n()
+        self.boot.set_round_s2n(fitter_type='isample')
 
     def add_shear_info(self):
         """
