@@ -172,21 +172,6 @@ class MedsFitBase(dict):
 
         cov_pars=self['cov_pars']
 
-        # we want the no-g-prior estimate for round Ts2n
-        print("fitting without g prior")
-        try:
-            boot.fit_max(model,
-                         max_pars,
-                         prior=self['prior_gflat'],
-                         ntry=max_pars['ntry'])
-            boot.try_replace_cov(cov_pars)
-            boot.set_round_s2n()
-            flat_res=boot.get_max_fitter().get_result()
-
-        except BootGalFailure:
-            print("    failed to fit max with flat prior")
-            flat_res=None
-
         # now with prior
         print("fitting with g prior")
         boot.fit_max(model,
@@ -195,10 +180,6 @@ class MedsFitBase(dict):
                      ntry=max_pars['ntry'])
         boot.try_replace_cov(cov_pars)
 
-        if flat_res is not None:
-            res=boot.get_max_fitter().get_result()
-            res['flat_res']={}
-            res['flat_res'].update(flat_res)
 
 
     def get_bootstrapper(self):
@@ -566,17 +547,12 @@ class MedsFitBase(dict):
         
         data['T_s2n'][dindex] = Ts2n
 
-        # results from flat g prior max like fit
-        mres=self.boot.get_max_fitter().get_result()
-        if 'flat_res' in mres:
-            fres=mres['flat_res']
-            data['flags_r'][dindex] = fres['round_flags']
-            data[n('T_r')][dindex]  = fres['round_pars'][4]
-            data['s2n_r'][dindex]   = fres['s2n_r']
-            data['T_s2n_r'][dindex] = fres['T_s2n_r']
 
-            tup=(Ts2n,fres['T_s2n_r'])
-            print("    Ts2n: %.2f Ts2n_r: %.2f" % tup)
+        data['flags_r'][dindex] = res['round_flags']
+        data[n('T_r')][dindex]  = res['round_pars'][4]
+        data['s2n_r'][dindex]   = res['s2n_r']
+        data['T_s2n_r'][dindex] = res['T_s2n_r']
+
 
         data['s2n_w'][dindex] = res['s2n_w']
         data['chi2per'][dindex] = res['chi2per']
@@ -814,6 +790,8 @@ class MedsFitISample(MedsFitShearBase):
         ipars=self['isample_pars']
         self.boot.isample(ipars, prior=self['prior'])
 
+        self.boot.set_round_s2n()
+
     def add_shear_info(self):
         """
         add shear information based on the gal_fitter
@@ -866,12 +844,10 @@ class MedsFitISample(MedsFitShearBase):
     def print_galaxy_result(self):
         super(MedsFitISample,self).print_galaxy_result()
         res=self.gal_fitter.get_result()
-        mres=self.boot.get_max_fitter().get_result()
 
         if 's2n_w' in res:
-            if 'flat_res' in mres:
-                fres=mres['flat_res']
-                tup=(res['s2n_w'],fres['s2n_r'],res['chi2per'])
+            if 's2n_r' in res:
+                tup=(res['s2n_w'],res['s2n_r'],res['chi2per'])
                 print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
             else:
                 tup=(res['s2n_w'],res['T_s2n'],res['chi2per'])

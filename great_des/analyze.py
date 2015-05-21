@@ -3,6 +3,8 @@ import numpy
 from numpy import diag, sqrt, newaxis, where, log10, ones, zeros
 from . import files
 
+from esutil.numpy_util import between
+
 MIN_ARATE=0.3
 MAX_ARATE=0.6
 MIN_S2N=10.0
@@ -262,8 +264,61 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
     else:
         return res
 
+def fit_m_c_s2n_diff(dlist, s2n_edges, field='s2n_r'):
+    """
+    fit m and c vs s/n differential
+    """
+    
+    def select_dlist(dlist, s2n_min, s2n_max, field):
+        dlist2=[]
+        s2n_sum=0.0
+        n=0
+        for d in dlist:
+            w,=where( between(d[field], s2n_min, s2n_max) )
 
-def fit_m_c_s2n(dlist, s2n_minvals, field='s2n_r'):
+            n += w.size
+            s2n_sum += d[field][w].sum()
+
+            dlist2.append(d[w])
+
+        s2n=s2n_sum/n
+        return dlist2, s2n
+
+    dtype=[('s2n','f8'),
+           ('nobj','i8'),
+           ('m1','f8'),
+           ('m1err','f8'),
+           ('m2','f8'),
+           ('m2err','f8'),
+           ('c1','f8'),
+           ('c1err','f8'),
+           ('c2','f8'),
+           ('c2err','f8')]
+           
+    num=len(s2n_edges)
+    out=zeros(num-1, dtype=dtype)
+
+    for i in xrange(num-1):
+        dlist2, s2n=select_dlist(dlist, s2n_edges[i], s2n_edges[i+1], field)
+
+        res=fit_m_c(dlist2, doprint=True)
+        out['s2n'][i] = s2n
+        out['nobj'][i] = res['nobj']
+        out['m1'][i] = res['m1']
+        out['m1err'][i] = res['m1err']
+        out['m2'][i] = res['m2']
+        out['m2err'][i] = res['m2err']
+
+        out['c1'][i] = res['c1']
+        out['c1err'][i] = res['c1err']
+        out['c2'][i] = res['c2']
+        out['c2err'][i] = res['c2err']
+
+    return out
+
+
+
+def fit_m_c_s2n_min(dlist, s2n_minvals, field='s2n_r'):
     """
     fit m and c vs s/n
     """
@@ -306,49 +361,62 @@ def fit_m_c_s2n(dlist, s2n_minvals, field='s2n_r'):
 
     return out
 
-def plot_m_c_s2n(data, field='s2n_r', show=False):
+def plot_m_c_s2n(data, field='s2n_r', type='min', show=False):
     import biggles
     tab=biggles.Table(2,1)
 
+    if type=='min':
+        pfield='s2n_min'
+        xlabel = 'min %s' % field
+    else:
+        pfield='s2n'
+        xlabel = field
 
-    m1c=biggles.Points(data['s2n_min'], data['m1'],
+    xrng=[0.75*data[pfield].min(), 1.5*data[pfield].max()]
+
+    m1c=biggles.Points(data[pfield], data['m1'],
                       type='filled circle', color='blue')
     m1c.label='m1'
-    m1errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['m1'], data['m1err'],
+    m1errc=biggles.SymmetricErrorBarsY(data[pfield], data['m1'], data['m1err'],
                                        color='blue')
 
-    m2c=biggles.Points(data['s2n_min'], data['m2'],
+    m2c=biggles.Points(data[pfield], data['m2'],
                       type='filled circle', color='red')
     m2c.label='m2'
-    m2errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['m2'], data['m2err'],
+    m2errc=biggles.SymmetricErrorBarsY(data[pfield], data['m2'], data['m2err'],
                                        color='red')
     mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
 
 
-    c1c=biggles.Points(data['s2n_min'], data['c1'],
+    c1c=biggles.Points(data[pfield], data['c1'],
                       type='filled circle', color='blue')
     c1c.label='c1'
-    c1errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['c1'], data['c1err'],
+    c1errc=biggles.SymmetricErrorBarsY(data[pfield], data['c1'], data['c1err'],
                                        color='blue')
 
-    c2c=biggles.Points(data['s2n_min'], data['c2'],
+    c2c=biggles.Points(data[pfield], data['c2'],
                       type='filled circle', color='red')
     c2c.label='c2'
-    c2errc=biggles.SymmetricErrorBarsY(data['s2n_min'], data['c2'], data['c2err'],
+    c2errc=biggles.SymmetricErrorBarsY(data[pfield], data['c2'], data['c2err'],
                                        color='red')
     ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
 
-    zc=biggles.Curve(data['s2n_min'], data['s2n_min']*0)
+    zc=biggles.Curve(data[pfield], data[pfield]*0)
 
     mplt=biggles.FramedPlot()
     mplt.xlabel=field
     mplt.ylabel='m'
+    mplt.xrange=xrng
+    mplt.xlog=True
     mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
 
     cplt=biggles.FramedPlot()
     cplt.xlabel=field
     cplt.ylabel='c'
+    cplt.xrange=xrng
+    cplt.xlog=True
     cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
+
 
     tab[0,0] = mplt
     tab[1,0] = cplt
