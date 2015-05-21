@@ -850,8 +850,8 @@ class MedsFitISample(MedsFitShearBase):
                 tup=(res['s2n_w'],res['s2n_r'],res['chi2per'])
                 print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
             else:
-                tup=(res['s2n_w'],res['T_s2n'],res['chi2per'])
-                print("    s2n: %.1f Ts2n: %.2f chi2per: %.3f" % tup)
+                tup=(res['s2n_w'],res['chi2per'])
+                print("    s2n: %.1f chi2per: %.3f" % tup)
 
     def copy_galaxy_result(self):
         """
