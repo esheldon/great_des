@@ -510,6 +510,7 @@ class MedsFitBase(dict):
         dindex=self.dindex
 
         fitter=self.gal_fitter
+        mres=self.boot.get_max_fitter().get_result()
 
         res=fitter.get_result()
         #pprint(res)
@@ -547,16 +548,17 @@ class MedsFitBase(dict):
         
         data['T_s2n'][dindex] = Ts2n
 
+        rres = self.boot.get_round_result()
+        data['flags_r'][dindex] = rres['flags']
+        data[n('T_r')][dindex]  = rres['pars'][4]
+        data['s2n_r'][dindex]   = rres['s2n_r']
+        data['T_s2n_r'][dindex] = rres['T_s2n_r']
+        data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
-        data['flags_r'][dindex] = res['round_flags']
-        data[n('T_r')][dindex]  = res['round_pars'][4]
-        data['s2n_r'][dindex]   = res['s2n_r']
-        data['T_s2n_r'][dindex] = res['T_s2n_r']
-
-
-        data['s2n_w'][dindex] = res['s2n_w']
-        data['chi2per'][dindex] = res['chi2per']
-        data['dof'][dindex] = res['dof']
+        # from the max like result
+        data['s2n_w'][dindex] = mres['s2n_w']
+        data['chi2per'][dindex] = mres['chi2per']
+        data['dof'][dindex] = mres['dof']
 
     def print_galaxy_result(self):
         res=self.gal_fitter.get_result()
@@ -606,6 +608,7 @@ class MedsFitBase(dict):
             (n('T_r'),'f8'),
             ('s2n_r','f8'),
             ('T_s2n_r','f8'),
+            ('psf_T_r','f8'),
 
             ('chi2per','f8'),
             ('dof','f8'),
@@ -642,6 +645,7 @@ class MedsFitBase(dict):
         data[n('T_r')] = DEFVAL
         data['s2n_r'] = DEFVAL
         data['T_s2n_r'] = DEFVAL
+        data['psf_T_r'] = DEFVAL
 
         data['g'] = DEFVAL
         data['g_cov'] = PDEFVAL
@@ -790,7 +794,9 @@ class MedsFitISample(MedsFitShearBase):
         ipars=self['isample_pars']
         self.boot.isample(ipars, prior=self['prior'])
 
-        self.boot.set_round_s2n(fitter_type='isample')
+        self.boot.set_round_s2n(self['max_pars'],
+                                method='sim',
+                                fitter_type='isample')
 
     def add_shear_info(self):
         """
@@ -843,15 +849,12 @@ class MedsFitISample(MedsFitShearBase):
 
     def print_galaxy_result(self):
         super(MedsFitISample,self).print_galaxy_result()
-        res=self.gal_fitter.get_result()
+        mres=self.boot.get_max_fitter().get_result()
 
-        if 's2n_w' in res:
-            if 's2n_r' in res:
-                tup=(res['s2n_w'],res['s2n_r'],res['chi2per'])
-                print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
-            else:
-                tup=(res['s2n_w'],res['chi2per'])
-                print("    s2n: %.1f chi2per: %.3f" % tup)
+        if 's2n_w' in mres:
+            rres=self.boot.get_round_result()
+            tup=(mres['s2n_w'],rres['s2n_r'],rres['T_s2n_r'],mres['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f T_s2n_r: %.3g chi2per: %.3f" % tup)
 
     def copy_galaxy_result(self):
         """
