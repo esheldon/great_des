@@ -170,7 +170,7 @@ class MedsFitBase(dict):
         model=self['model_pars']['model']
         max_pars=self['max_pars']
 
-        cov_pars=self['cov_pars']
+        cov_pars=max_pars['cov_pars']
 
         # now with prior
         print("fitting with g prior")
@@ -180,6 +180,10 @@ class MedsFitBase(dict):
                      ntry=max_pars['ntry'])
         boot.try_replace_cov(cov_pars)
 
+
+        self.boot.set_round_s2n(max_pars,
+                                method='sim',
+                                fitter_type='max')
 
 
     def get_bootstrapper(self):
@@ -684,9 +688,9 @@ class MedsFitMax(MedsFitBase):
         res=self.gal_fitter.get_result()
 
         if 's2n_w' in res:
-            tup=(res['s2n_w'],res['s2n_r'],res['nfev'],res['chi2per'])
-            print("    s2n: %.1f s2n_r: %.1f nfev: %d chi2per: %.3f" % tup)
-
+            rres=self.boot.get_round_result()
+            tup=(res['s2n_w'],rres['s2n_r'],rres['T_s2n_r'],res['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f T_s2n_r: %.3g chi2per: %.3f" % tup)
 
     def make_dtype(self):
         super(MedsFitMax,self).make_dtype()
