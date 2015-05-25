@@ -15,8 +15,8 @@ def fit_g_prior(run, type='great-des', show=False, gmax=1.0, **keys):
 
     # higher s/n requirements than for flux/T fits
     g=cache_data(run, 'g',
-                 min_s2n=100.0,
-                 min_Ts2n=30.0,
+                 min_s2n_r=100.0,
+                 min_Ts2n_r=30.0,
                  **keys)
 
     hd=eu.stat.histogram(g, nbin=100, min=0, max=gmax,more=True)
@@ -160,14 +160,13 @@ def cache_data(run,
     import esutil as eu
     import fitsio
 
-    keys['min_s2n']=keys.get('min_s2n',1.0)
-    keys['min_Ts2n']=keys.get('minTs2n',10.0)
+    keys['min_s2n_r']=keys.get('min_s2n_r',1.0)
+    keys['min_Ts2n_r']=keys.get('min_Ts2n_r',10.0)
     keys['max_g']=keys.get('max_g',GMAX_HIGHS2N)
 
     keys['fracdev_err_max']=keys.get('fracdev_err_max',0.05)
     keys['cut_fracdev_exact']=keys.get('cut_fracdev_exact',True)
     keys['fracdev_range']=keys.get('fracdev_range',[-1.0,2.0])
-
 
     tmpdir=os.environ['TMPDIR']
     cachename=os.path.join(tmpdir,'%s-%s.fits' % (run,type))
