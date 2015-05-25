@@ -170,7 +170,7 @@ class MedsFitBase(dict):
         model=self['model_pars']['model']
         max_pars=self['max_pars']
 
-        cov_pars=max_pars['cov_pars']
+        cov_pars=self['cov_pars']
 
         # now with prior
         print("fitting with g prior")
