@@ -404,14 +404,14 @@ def plot_m_c_s2n(data, field='s2n_r', type='min', show=False):
     zc=biggles.Curve(data[pfield], data[pfield]*0)
 
     mplt=biggles.FramedPlot()
-    mplt.xlabel=field
+    mplt.xlabel=xlabel
     mplt.ylabel='m'
     mplt.xrange=xrng
     mplt.xlog=True
     mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
 
     cplt=biggles.FramedPlot()
-    cplt.xlabel=field
+    cplt.xlabel=xlabel
     cplt.ylabel='c'
     cplt.xrange=xrng
     cplt.xlog=True
