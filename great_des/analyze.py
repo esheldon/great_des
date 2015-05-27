@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy
-from numpy import diag, sqrt, newaxis, where, log10, ones, zeros
+from numpy import diag, sqrt, newaxis, where, log10, ones, zeros, exp
 from . import files
 
 from esutil.numpy_util import between
@@ -44,7 +44,8 @@ def load_data(run, select=True, trim_cols=False, **keys):
         if trim_cols:
             keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
                        'efficiency','neff',
-                       's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r']
+                       's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
+                       'psf_T_r']
             data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
         dlist.append(data)
     return dlist
@@ -60,11 +61,14 @@ def select_good(data,
                 min_s2n_r=None,
                 min_Ts2n=None,
                 min_Ts2n_r=None,
+                min_efficiency=None,
+                max_chi2per=None,
                 s2n_r_range=None,
                 Ts2n_r_range=None,
                 fracdev_err_max=None,
                 cut_fracdev_exact=False,
                 fracdev_range=None,
+                min_Trat=None,
                 max_g=1.0):
     """
     apply standard selection
@@ -188,6 +192,31 @@ def select_good(data,
             if w.size != data.size:
                 print("    kept %d/%d from fracdev exact" % (w.size, data.size))
                 logic = logic & elogic
+
+    if min_efficiency is not None:
+        elogic = (data['efficiency'] > min_efficiency)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from eff > %g" % (w.size, data.size, min_efficiency))
+            logic = logic & elogic
+
+    if max_chi2per is not None:
+        elogic = (data['chi2per'] > max_chi2per)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from chi2per < %g" % (w.size, data.size, max_chi2per))
+            logic = logic & elogic
+
+
+    if min_Trat is not None:
+        T_r = exp(data['log_T_r'])
+        Trat = T_r/data['psf_T_r']
+        elogic = (Trat > min_Trat)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from Tg/Tpsf > %g" % (w.size, data.size, min_Trat))
+            logic = logic & elogic
+
 
 
     w,=where(logic)
@@ -361,7 +390,7 @@ def fit_m_c_s2n_min(dlist, s2n_minvals, field='s2n_r'):
 
     return out
 
-def plot_m_c_s2n(data, field='s2n_r', type='min', show=False):
+def plot_m_c_s2n(data, field='s2n_r', type='min', show=False, xlog=True):
     import biggles
     tab=biggles.Table(2,1)
 
@@ -372,7 +401,10 @@ def plot_m_c_s2n(data, field='s2n_r', type='min', show=False):
         pfield='s2n'
         xlabel = field
 
-    xrng=[0.75*data[pfield].min(), 1.5*data[pfield].max()]
+    if xlog:
+        xrng=[0.75*data[pfield].min(), 1.5*data[pfield].max()]
+    else:
+        xrng=[0.9*data[pfield].min(), 1.1*data[pfield].max()]
 
     m1c=biggles.Points(data[pfield], data['m1'],
                       type='filled circle', color='blue')
@@ -407,14 +439,14 @@ def plot_m_c_s2n(data, field='s2n_r', type='min', show=False):
     mplt.xlabel=xlabel
     mplt.ylabel='m'
     mplt.xrange=xrng
-    mplt.xlog=True
+    mplt.xlog=xlog
     mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
 
     cplt=biggles.FramedPlot()
     cplt.xlabel=xlabel
     cplt.ylabel='c'
     cplt.xrange=xrng
-    cplt.xlog=True
+    cplt.xlog=xlog
     cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
 
 
