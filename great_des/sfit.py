@@ -152,8 +152,10 @@ class MedsFitBase(dict):
         boot.fit_gal_psf_flux()
 
         data=self.data
-        data['psf_flux'][dindex] = boot.psf_flux
-        data['psf_flux_err'][dindex] = boot.psf_flux_err
+
+        pres = boot.get_psf_flux_result()
+        data['psf_flux'][dindex] = pres['psf_flux'][0]
+        data['psf_flux_err'][dindex] = pres['psf_flux_err'][0]
 
     def fit_galaxy(self):
         """
