@@ -175,16 +175,16 @@ class MedsFitBase(dict):
         cov_pars=self['cov_pars']
 
         # now with prior
-        print("fitting with g prior")
         boot.fit_max(model,
                      max_pars,
                      prior=self['prior'],
                      ntry=max_pars['ntry'])
         boot.try_replace_cov(cov_pars)
 
-
-        self.boot.set_round_s2n(max_pars,
-                                fitter_type='max')
+    def do_round_measures(self):
+        rpars=self['round_pars']
+        self.boot.set_round_s2n(self['max_pars'],
+                                fitter_type=rpars['fitter_type'])
 
 
     def get_bootstrapper(self):
@@ -669,8 +669,8 @@ class MedsFitMax(MedsFitBase):
         fit with max like, using a MaxRunner object
         """
         self.fit_max()
+        self.do_round_measures()
         self.gal_fitter=self.boot.get_max_fitter()
-
 
     def copy_galaxy_result(self):
         """
@@ -745,8 +745,6 @@ class CompositeMedsFitMax(MedsFitMax):
 
 
 class MedsFitShearBase(MedsFitBase):
-    def fit_galaxy(self):
-        pass
 
     def make_dtype(self):
         super(MedsFitShearBase,self).make_dtype()
@@ -781,9 +779,9 @@ class MedsFitISample(MedsFitShearBase):
         """
         call super to fit max like
         """
-        super(MedsFitISample,self).fit_galaxy()
         self.fit_max()
         self.do_isample()
+        self.do_round_measures()
 
         self.add_shear_info()
 
@@ -795,9 +793,6 @@ class MedsFitISample(MedsFitShearBase):
         """
         ipars=self['isample_pars']
         self.boot.isample(ipars, prior=self['prior'])
-
-        self.boot.set_round_s2n(self['max_pars'],
-                                fitter_type='isample')
 
     def add_shear_info(self):
         """
