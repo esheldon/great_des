@@ -184,7 +184,6 @@ class MedsFitBase(dict):
 
 
         self.boot.set_round_s2n(max_pars,
-                                method='sim',
                                 fitter_type='max')
 
 
@@ -558,7 +557,6 @@ class MedsFitBase(dict):
         data['flags_r'][dindex] = rres['flags']
         data[n('T_r')][dindex]  = rres['pars'][4]
         data['s2n_r'][dindex]   = rres['s2n_r']
-        data['T_s2n_r'][dindex] = rres['T_s2n_r']
         data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
         # from the max like result
@@ -613,7 +611,6 @@ class MedsFitBase(dict):
             ('flags_r','i4'),
             (n('T_r'),'f8'),
             ('s2n_r','f8'),
-            ('T_s2n_r','f8'),
             ('psf_T_r','f8'),
 
             ('chi2per','f8'),
@@ -650,7 +647,6 @@ class MedsFitBase(dict):
         data['flags_r'] = NO_ATTEMPT
         data[n('T_r')] = DEFVAL
         data['s2n_r'] = DEFVAL
-        data['T_s2n_r'] = DEFVAL
         data['psf_T_r'] = DEFVAL
 
         data['g'] = DEFVAL
@@ -691,8 +687,8 @@ class MedsFitMax(MedsFitBase):
 
         if 's2n_w' in res:
             rres=self.boot.get_round_result()
-            tup=(res['s2n_w'],rres['s2n_r'],rres['T_s2n_r'],res['chi2per'])
-            print("    s2n: %.1f s2n_r: %.1f T_s2n_r: %.3g chi2per: %.3f" % tup)
+            tup=(res['s2n_w'],rres['s2n_r'],res['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
 
     def make_dtype(self):
         super(MedsFitMax,self).make_dtype()
@@ -801,7 +797,6 @@ class MedsFitISample(MedsFitShearBase):
         self.boot.isample(ipars, prior=self['prior'])
 
         self.boot.set_round_s2n(self['max_pars'],
-                                method='sim',
                                 fitter_type='isample')
 
     def add_shear_info(self):
@@ -859,8 +854,8 @@ class MedsFitISample(MedsFitShearBase):
 
         if 's2n_w' in mres:
             rres=self.boot.get_round_result()
-            tup=(mres['s2n_w'],rres['s2n_r'],rres['T_s2n_r'],mres['chi2per'])
-            print("    s2n: %.1f s2n_r: %.1f T_s2n_r: %.3g chi2per: %.3f" % tup)
+            tup=(mres['s2n_w'],rres['s2n_r'],mres['chi2per'])
+            print("    s2n: %.1f s2n_r: %.1f chi2per: %.3f" % tup)
 
     def copy_galaxy_result(self):
         """

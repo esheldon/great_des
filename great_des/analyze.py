@@ -97,19 +97,21 @@ def select_good(data,
             logic = logic & elogic
 
     if min_s2n_r is not None:
-        elogic = (data['s2n_r'] > min_s2n_r)
-        w,=where(elogic)
-        if w.size != data.size:
-            print("    kept %d/%d from s2n_r > %g" % (w.size, data.size, min_s2n_r))
-            logic = logic & elogic
+        if 's2n_r' in data.dtype.names:
+            elogic = (data['s2n_r'] > min_s2n_r)
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from s2n_r > %g" % (w.size, data.size, min_s2n_r))
+                logic = logic & elogic
 
     if s2n_r_range is not None:
-        rng=s2n_r_range
-        elogic = (data['s2n_r'] > rng[0]) & (data['s2n_r'] < rng[1])
-        w,=where(elogic)
-        if w.size != data.size:
-            print("    kept %d/%d from s2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
-            logic = logic & elogic
+        if 's2n_r' in data.dtype.names:
+            rng=s2n_r_range
+            elogic = (data['s2n_r'] > rng[0]) & (data['s2n_r'] < rng[1])
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from s2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
+                logic = logic & elogic
 
 
 
@@ -121,19 +123,21 @@ def select_good(data,
             logic = logic & elogic
 
     if min_Ts2n_r is not None:
-        elogic = (data['T_s2n_r'] > min_Ts2n_r)
-        w,=where(elogic)
-        if w.size != data.size:
-            print("    kept %d/%d from Ts2n_r > %g" % (w.size, data.size, min_Ts2n_r))
-            logic = logic & elogic
+        if 'T_s2n_r' in data.dtype.names:
+            elogic = (data['T_s2n_r'] > min_Ts2n_r)
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from Ts2n_r > %g" % (w.size, data.size, min_Ts2n_r))
+                logic = logic & elogic
 
     if Ts2n_r_range is not None:
-        rng=Ts2n_r_range
-        elogic = (data['T_s2n_r'] > rng[0]) & (data['T_s2n_r'] < rng[1])
-        w,=where(elogic)
-        if w.size != data.size:
-            print("    kept %d/%d from Ts2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
-            logic = logic & elogic
+        if 'T_s2n_r' in data.dtype.names:
+            rng=Ts2n_r_range
+            elogic = (data['T_s2n_r'] > rng[0]) & (data['T_s2n_r'] < rng[1])
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from Ts2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
+                logic = logic & elogic
 
     if min_T is not None:
         elogic = (data['log_T'] > min_T)
