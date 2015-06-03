@@ -1,8 +1,10 @@
 from __future__ import print_function
+import os
 import numpy
 from numpy import diag, sqrt, newaxis, where, log10, ones, zeros, exp
 from . import files
 
+import esutil as eu
 from esutil.numpy_util import between
 
 MIN_ARATE=0.3
@@ -229,15 +231,25 @@ def select_good(data,
     data=data[w]
     return data
 
-def get_weights(data):
+def get_weights(data, wstyle='tracecov'):
     """
     a good set of weights
     """
-    csum=data['g_cov'][:,0,0] + data['g_cov'][:,1,1]
-    wts=1.0/(2*SN**2 + csum)
+
+    print("wstyle:",wstyle)
+    if wstyle=='tracecov':
+        csum=data['g_cov'][:,0,0] + data['g_cov'][:,1,1]
+        wts=1.0/(2*SN**2 + csum)
+    elif wstyle=='s2n_r':
+        wts=1.0/(2*SN**2 + 2/data['s2n_r']**2)
+    elif wstyle is None:
+        wts=ones(data.size)
+    else:
+        raise ValueError("bad weights style: '%s'" % wstyle)
+
     return wts
 
-def fit_m_c(dlist, show=False, doprint=False, get_plt=False):
+def fit_m_c(dlist, wstyle='tracecov', show=False, doprint=False, get_plt=False):
     """
     get m and c
     """
@@ -250,7 +262,7 @@ def fit_m_c(dlist, show=False, doprint=False, get_plt=False):
 
     nobj=0
     for i,data in enumerate(dlist):
-        gtrue[i,:],gmean,gcov=calc_gmean(data)
+        gtrue[i,:],gmean,gcov=calc_gmean(data, wstyle=wstyle)
         gdiff[i,:] = gmean - gtrue[i,:]
         gdiff_err[i,:] = sqrt(diag(gcov))
 
@@ -297,7 +309,7 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
     else:
         return res
 
-def fit_m_c_s2n_diff(dlist, s2n_edges, field='s2n_r'):
+def fit_m_c_s2n_diff(dlist, s2n_edges, field='s2n_r', wstyle='tracecov'):
     """
     fit m and c vs s/n differential
     """
@@ -334,7 +346,7 @@ def fit_m_c_s2n_diff(dlist, s2n_edges, field='s2n_r'):
     for i in xrange(num-1):
         dlist2, s2n=select_dlist(dlist, s2n_edges[i], s2n_edges[i+1], field)
 
-        res=fit_m_c(dlist2, doprint=True)
+        res=fit_m_c(dlist2, doprint=True, wstyle=wstyle)
         out['s2n'][i] = s2n
         out['nobj'][i] = res['nobj']
         out['m1'][i] = res['m1']
@@ -351,7 +363,7 @@ def fit_m_c_s2n_diff(dlist, s2n_edges, field='s2n_r'):
 
 
 
-def fit_m_c_s2n_min(dlist, s2n_minvals, field='s2n_r'):
+def fit_m_c_s2n_min(dlist, s2n_minvals, field='s2n_r', wstyle='tracecov'):
     """
     fit m and c vs s/n
     """
@@ -377,9 +389,10 @@ def fit_m_c_s2n_min(dlist, s2n_minvals, field='s2n_r'):
     out=zeros(len(s2n_minvals), dtype=dtype)
 
     for i,s2n_min in enumerate(s2n_minvals):
+        print("%s > %.3g" % (field, s2n_min))
         dlist2=select_dlist(dlist, s2n_min)
 
-        res=fit_m_c(dlist2, doprint=True)
+        res=fit_m_c(dlist2, doprint=True, wstyle=wstyle)
         out['s2n_min'][i] = s2n_min
         out['nobj'][i] = res['nobj']
         out['m1'][i] = res['m1']
@@ -499,7 +512,7 @@ def plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=None):
 
     return plt
 
-def calc_gmean(data):
+def calc_gmean(data, wstyle='tracecov'):
     """
     get gtrue, gmeas, gcov
     """
@@ -507,7 +520,7 @@ def calc_gmean(data):
     gtrue = data['shear_true'].mean(axis=0)
     gmeas = numpy.zeros(2)
 
-    wts=get_weights(data)
+    wts=get_weights(data, wstyle=wstyle)
 
     '''
     g1sum = (data['g'][:,0]*wts).sum()
@@ -625,10 +638,12 @@ class AnalyzerS2N(dict):
     """
     analyze m and c vs various parameters
     """
-    def __init__(self, nbin=12, min_s2n=10., max_s2n=200.):
+    def __init__(self, nbin=12, min_s2n=10., max_s2n=200., wstyle='tracecov'):
         self.nbin=nbin
         self.min_s2n=min_s2n
         self.max_s2n=max_s2n
+
+        self.wstyle=wstyle
 
     def go(self, dlist):
         """
@@ -730,7 +745,7 @@ class AnalyzerS2N(dict):
 
                 cut_dlist.append(td)
 
-            res = fit_m_c(cut_dlist)
+            res = fit_m_c(cut_dlist, wstyle=self.wstyle)
             m[i,0],c[i,0] = res['m1'],res['c1']
             m[i,1],c[i,1] = res['m2'],res['c2']
             merr[i,0],cerr[i,0] = res['m1err'],res['c1err']
@@ -833,3 +848,60 @@ def plot_e_vs_sigma(data,
     if show:
         plt.show()
     return plt
+
+
+def add_cmodel_to_run(run, run_cm):
+    """
+    add the s2n_r and T_s2n_r from one run to another
+
+    e.g. the first run might be sfit-eg01 and the second sfit-c05
+    """
+    import fitsio
+
+    new_run = '%s-%s' % (run, run_cm)
+    print("new run:",new_run)
+
+    d=files.get_collated_dir(run=new_run, gnum=0)
+    if not os.path.exists(d):
+        os.makedirs(d)
+
+    conf=files.read_config(run=run)
+    for gnum in xrange(conf['ng']):
+        print("gnum:",gnum)
+        outfile=files.get_collated_file(run=new_run, gnum=gnum)
+        print("outfile:",outfile)
+
+
+        fname=files.get_collated_file(run=run, gnum=gnum)
+        fname_cm=files.get_collated_file(run=run_cm, gnum=gnum)
+
+        print("    reading:",fname)
+        data=fitsio.read(fname)#, rows=range(1000))
+        print("    reading:",fname_cm)
+        data_cm=fitsio.read(fname_cm)#, rows=range(1000))
+
+        data['flags_r']=1
+        data['s2n_r'] = -9999.0
+        data['T_s2n_r'] = -9999.0
+
+        for fnum in xrange(conf['nf']):
+            print("        fnum:",fnum,)
+
+            w,=where(data['fnum']==fnum)
+            w_cm,=where(data_cm['fnum']==fnum)
+
+            if w.size > 0 and w_cm.size > 0:
+                m,m_cm=eu.numpy_util.match(data['number'][w],
+                                           data_cm['number'][w_cm])
+
+                print("%d/%d" % (m.size, w.size))
+                if m.size > 0:
+                    ind = w[m]
+                    ind_cm = w_cm[m_cm]
+                    for field in ['flags_r','s2n_r','T_s2n_r']:
+                        data[field][ind] = data_cm[field][ind_cm]
+        
+        print("writing:",outfile)
+        fitsio.write(outfile, data, clobber=True)
+        #m, m_cm = eu.numpy_util.match(...)
+
