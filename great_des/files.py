@@ -488,9 +488,16 @@ def read_prior(**keys):
     print("reading:",fname)
     data = fitsio.read(fname)
 
-    prior = GMixND(data['weights'],
-                   data['means'],
-                   data['covars'])
+    weights=data['weights']
+    means=data['means']
+    covars=data['covars']
+
+    if len(means.shape) == 1:
+        means = means.reshape( (means.size, 1) )
+
+    prior = GMixND(weights,
+                   means,
+                   covars)
     return prior
     
 

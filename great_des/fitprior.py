@@ -86,6 +86,29 @@ def fit_log_F_fracdev_prior(run,
                        nkeep=nkeep,
                        **keys)
 
+def fit_fracdev_prior(run,
+                      ngauss=20,
+                      min_covar=1.0e-6,
+                      n_iter=5000,
+                      show=False,
+                      nkeep=NKEEP_DEFAULT,
+                      **keys):
+
+    partype='fracdev'
+    par_labels=['fracdev']
+
+    _fit_prior_generic(run,
+                       partype,
+                       par_labels,
+
+                       ngauss=ngauss,
+                       min_covar=min_covar,
+                       n_iter=n_iter,
+                       show=show,
+                       nkeep=nkeep,
+                       **keys)
+
+
 def _fit_prior_generic(run,
                        partype,
                        par_labels,
@@ -101,12 +124,12 @@ def _fit_prior_generic(run,
 
     prior_file, eps_file = get_output_files(run, partype)
 
-    log_TF=cache_data(run, partype, **keys)
+    data=cache_data(run, partype, **keys)
     
     gm=ngmix.gmix.GMixND()
-    gm.fit(log_TF, ngauss, n_iter=n_iter, min_covar=min_covar)
+    gm.fit(data, ngauss, n_iter=n_iter, min_covar=min_covar)
 
-    do_plot_fits(log_TF, gm, par_labels, eps_file, show=show)
+    do_plot_fits(data, gm, par_labels, eps_file, show=show)
     write_prior(prior_file, gm.weights, gm.means, gm.covars)
 
 
@@ -141,9 +164,10 @@ def write_prior(fname, weights, means, covars):
     fitsio.write(fname, output, clobber=True)
 
 def make_ngauss_output(weights, means, covars):
+    print("shapes:",weights.shape, means.shape, covars.shape)
     ngauss,ndim = means.shape
     output=zeros(ngauss, dtype=[('weights','f8'),
-                                ('means','f8',ndim),
+                                ('means','f8',(ndim,)),
                                 ('covars','f8',(ndim,ndim))])
     output['weights']=weights
     output['means']=means
@@ -204,6 +228,9 @@ def cache_data(run,
             tmp=numpy.zeros(data.size, dtype=[('log_TF','f4',2)])
             tmp['log_TF'][:,0] = data['log_T']
             tmp['log_TF'][:,1] = data['log_flux']
+        elif type=='fracdev':
+            tmp=numpy.zeros(data.size, dtype=[('fracdev','f4',(1,))])
+            tmp['fracdev'][:,0] = data['fracdev']
         elif type=='log_F_fracdev':
             tmp=numpy.zeros(data.size, dtype=[('log_F_fracdev','f4',2)])
             tmp['log_F_fracdev'][:,0] = data['log_flux']
@@ -215,6 +242,10 @@ def cache_data(run,
         fitsio.write(cachename, tmp, clobber=True)
 
     data = tmp[type]
+
+    if len(data.shape) == 1:
+        data = data.reshape( data.size, 1)
+
     ntot=data.shape[0]
     print("nobj:",data.shape[0])
     if nkeep is not None and nkeep < ntot:
@@ -310,7 +341,7 @@ def _plot_single(data, samples, comps, do_ylog=False):
 
     w,=where( (harr > 0) & (sharr > 0) )
     yrange=[min(harr[w].min(), sharr[w].min()),
-            max(harr[w].max(), sharr[w].max())]
+            1.1*max(harr[w].max(), sharr[w].max())]
 
     if do_ylog:
         plt.ylog=True
