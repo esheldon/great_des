@@ -236,7 +236,7 @@ def get_weights(data, wstyle='tracecov'):
     a good set of weights
     """
 
-    print("wstyle:",wstyle)
+    #print("wstyle:",wstyle)
     if wstyle=='tracecov':
         csum=data['g_cov'][:,0,0] + data['g_cov'][:,1,1]
         wts=1.0/(2*SN**2 + csum)
