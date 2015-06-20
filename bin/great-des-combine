@@ -21,7 +21,9 @@ parser.add_option('--allow-missing',action='store_true')
 def read_output(**conf):
     data0 = files.read_output(**conf)
 
-    add_dt=[('fnum','i4'),
+    add_dt=[('id_cosmos','i4'),
+            ('to_use','i2'),
+            ('fnum','i4'),
             ('shear_true','f8',2),
             ('psf_true_e','f8',2),
             ('fwhm_true','f4'),
@@ -115,6 +117,8 @@ def main():
                     stop
 
                 data['fnum'] = fnum
+                data['id_cosmos'] = truth_data['id_cosmos'][tbeg:tend]
+                data['to_use'] = truth_data['to_use'][tbeg:tend]
                 data['shear_true'][:,0] = truth_data['g1_true'][tbeg:tend]
                 data['shear_true'][:,1] = truth_data['g2_true'][tbeg:tend]
                 data['psf_true_e'][:,0] = truth_data['psf_e1'][tbeg:tend]

@@ -40,6 +40,7 @@ class MedsFitBase(dict):
 
         self.update(keys)
 
+        self.set_true_shear()
         self.set_defaults()
         self.load_data()
         self.set_indices()
@@ -57,6 +58,11 @@ class MedsFitBase(dict):
         self['make_plots']=self.get('make_plots',False)
 
         self['randomize_psf'] = self.get('randomize_psf',False)
+
+    def set_true_shear(self):
+        from . import analyze
+        if 'gnum' in self:
+            self.true_shear = analyze.SHEARS[self['gnum']]
 
     def get_data(self):
         """
@@ -832,17 +838,17 @@ class MedsFitISample(MedsFitShearBase):
         res['nuse'] = ls.get_nuse()
 
         # not able to use extra weights yet
-        '''
-        pqrobj=ngmix.pqr.PQR(g, g_prior,
-                             shear_expand=self.shear_expand,
-                             remove_prior=remove_prior)
+        pqrobj=ngmix.pqr.PQR(g_vals,
+                             g_prior,
+                             weights=iweights,
+                             shear_expand=self.true_shear,
+                             remove_prior=True)
 
 
         P,Q,R = pqrobj.get_pqr()
         res['P']=P
         res['Q']=Q
         res['R']=R
-        '''
 
     def print_galaxy_result(self):
         super(MedsFitISample,self).print_galaxy_result()
@@ -866,6 +872,10 @@ class MedsFitISample(MedsFitShearBase):
             data['efficiency'][dindex] = res['efficiency']
             data['neff'][dindex]       = res['neff']
 
+        if 'P' in res:
+            data['P'][dindex]     = res['P']
+            data['Q'][dindex,:]   = res['Q']
+            data['R'][dindex,:,:] = res['R']
 
     def make_dtype(self):
         super(MedsFitISample,self).make_dtype()

@@ -174,6 +174,7 @@ def read_input_file(**keys):
     import fitsio
 
     fname=get_input_file(**keys)
+    print('reading:',fname)
     return fitsio.read(fname)
 
 def get_psf_file(**keys):

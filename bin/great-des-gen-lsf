@@ -22,6 +22,70 @@ function run_fit {
     echo "host: $(hostname)"
     echo "will write to file: $output"
 
+    great-des-fit-bynum \\
+        --work-dir=$tmpdir                \\
+        ${run}                    \\
+        ${gnum}                      \\
+        ${fnum}                     \\
+        ${start} \\
+        ${end}
+
+    status=$?
+
+    echo "time: $SECONDS"
+
+    if [[ $status != "0" ]]; then
+        echo "error running great des: $status"
+    fi
+
+    return $status
+}
+
+run=$1
+gnum=$2
+fnum=$3
+start=$4
+end=$5
+logfile=$6
+
+tmpdir="/scratch/esheldon/${LSB_JOBID}"
+
+mkdir -p ${tmpdir}
+echo "cd $tmpdir"
+cd $tmpdir
+
+tmplog=$(basename $logfile)
+
+run_fit &> ${tmplog}
+status=$?
+
+echo "moving log file ${tmplog} -> ${logfile}" >> ${tmplog}
+
+# errors go to the jobs stderr
+mv -fv "${tmplog}" "${logfile}" 1>&2
+status2=$?
+
+if [[ $status2 != "0" ]]; then
+    # this error message will go to main error file
+    echo "error ${status2} moving log to: ${logfile}" 1>&2
+
+    status=$status2
+fi
+
+cd $HOME
+
+echo "removing temporary directory"
+rm -rfv ${tmpdir}
+
+exit $status
+"""
+
+
+_master_template_old="""#!/bin/bash
+function run_fit {
+    echo "host: $(hostname)"
+    echo "will write to file: $output"
+
     great-des-fit \\
         --work-dir=$tmpdir                \\
         --obj-range ${start},${end}       \\
@@ -97,11 +161,12 @@ _lsf_template="""#!/bin/bash
 echo "working on host: $(hostname)"
 
 %(master)s \\
-        %(meds_file)s \\
-        %(truth_file)s \\
-        %(psf_file)s \\
-        %(output_file)s \\
-        %(start)s %(end)s
+        %(run)s \\
+        %(gnum)s \\
+        %(fnum)s \\
+        %(start)s \\
+        %(end)s \\
+        %(logfile)s
 """
 
 
@@ -124,7 +189,7 @@ class LSFMaker(object):
         print("writing:",self.master_file)
 
         with open(self.master_file,'w') as fobj:
-            text=_master_template % {'config_file': self.config_file}
+            text=_master_template
             fobj.write(text)
         
         os.system('chmod 755 %s' % self.master_file)
@@ -174,7 +239,8 @@ class LSFMaker(object):
 
                     print(lsf_file)
 
-                    text,output_file=self.get_text(fnum=fnum,
+                    text,output_file=self.get_text(run=self.run,
+                                                   fnum=fnum,
                                                    gnum=gnum,
                                                    start=start,
                                                    end=end,
@@ -192,19 +258,18 @@ class LSFMaker(object):
 
     def get_text(self, **keys):
 
-        keys.update( self.conf )
-
+        keys['queue'] = self.conf['queue']
         keys['master'] = self.master_file
-        keys['meds_file']=files.get_input_file(ftype="meds", **keys)
-        keys['truth_file']=files.get_input_file(ftype="truth", **keys)
-        keys['psf_file']=files.get_psf_file(**keys)
-        keys['output_file'] = files.get_output_file(**keys)
+        keys['gnum']=keys['gnum']
+        keys['fnum']=keys['fnum']
+        output_file = files.get_output_file(**keys)
+        keys['logfile'] = output_file+'.log'
 
         keys['job_name']='%(run)s-%(fnum)03i-g%(gnum)02i-%(start)05d-%(end)05d' % keys
 
         text = _lsf_template % keys
 
-        return text, keys['output_file']
+        return text, output_file
 
     def make_output_dirs(self):
         lsf_dir=files.get_lsf_dir(run=self.run)
