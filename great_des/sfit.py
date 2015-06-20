@@ -566,6 +566,7 @@ class MedsFitBase(dict):
         data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
         # from the max like result
+        data['max_flags'][dindex] = mres['flags']
         data['s2n_w'][dindex] = mres['s2n_w']
         data['chi2per'][dindex] = mres['chi2per']
         data['dof'][dindex] = mres['dof']
