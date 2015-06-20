@@ -512,6 +512,58 @@ def plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=None):
 
     return plt
 
+
+def calc_fracdev_s2n_diff(dlist, s2n_edges, field='s2n_r', wstyle='tracecov'):
+    """
+    fit m and c vs s/n differential
+    """
+    
+    def select_fracdev(dlist, s2n_min, s2n_max, field):
+        """
+        get fracdev from all sub fields for the specified binning
+        """
+        s2n_sum=0.0
+        n=0
+
+        alist=[]
+        for d in dlist:
+            w,=where( between(d[field], s2n_min, s2n_max) )
+
+            alist.append( d['fracdev'][w] )
+
+            n += w.size
+            s2n_sum += d[field][w].sum()
+
+        fracdevs = numpy.concatenate( alist )
+        s2n=s2n_sum/n
+        return fracdevs, s2n, n
+
+    dtype=[('s2n','f8'),
+           ('nobj','i8'),
+           ('fracdev','f8'),
+           ('fracdev_err','f8')]
+           
+    num=len(s2n_edges)
+    out=zeros(num-1, dtype=dtype)
+
+    for i in xrange(num-1):
+        fracdevs, s2n, nobj =select_fracdev(dlist, s2n_edges[i], s2n_edges[i+1], field)
+
+        fracdev = fracdevs.mean()
+        fracdev_err = fracdevs.std()/sqrt(fracdevs.size)
+
+        out['s2n'][i] = s2n
+        out['nobj'][i] = nobj
+        out['fracdev'][i] = fracdev
+        out['fracdev_err'][i] = fracdev_err
+
+        print("    %.1f %d %.3g +/- %.3g" % (s2n, nobj, fracdev, fracdev_err))
+
+    return out
+
+
+
+
 def calc_gmean(data, wstyle='tracecov'):
     """
     get gtrue, gmeas, gcov
