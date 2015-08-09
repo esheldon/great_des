@@ -2,6 +2,7 @@ from __future__ import print_function
 import os
 from sys import stderr,stdout
 import time
+from pprint import pprint
 import numpy
 from numpy import array, sqrt, zeros, log, exp, arange
 
@@ -514,7 +515,6 @@ class MedsFitBase(dict):
         """
         copy some subset of the psf parameters
         """
-        from pprint import pprint
         n=self.get_namer()
 
         data=self.data
@@ -524,7 +524,6 @@ class MedsFitBase(dict):
         mres=self.boot.get_max_fitter().get_result()
 
         res=fitter.get_result()
-        #pprint(res)
 
         if res['flags'] != 0:
             print("    galaxy fit failure")
@@ -566,7 +565,9 @@ class MedsFitBase(dict):
         data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
         # from the max like result
-        data['max_flags'][dindex] = mres['flags']
+        if 'max_flags' in data.dtype.names:
+            data['max_flags'][dindex] = mres['flags']
+
         data['s2n_w'][dindex] = mres['s2n_w']
         data['chi2per'][dindex] = mres['chi2per']
         data['dof'][dindex] = mres['dof']
@@ -708,6 +709,100 @@ class MedsFitMax(MedsFitBase):
         super(MedsFitMax,self).make_struct()
         self.data['nfev'] = PDEFVAL
 
+class MedsMetacal(MedsFitMax):
+    def fit_galaxy(self):
+        """
+        fit with max like, using a MaxRunner object
+        """
+
+        self.fit_max()
+        self.do_metacal()
+        self.do_round_measures()
+        self.gal_fitter=self.boot.get_max_fitter()
+
+    def do_metacal(self):
+        boot=self.boot
+
+
+        psf_pars=self['psf_pars']
+        model=self['model_pars']['model']
+        max_pars=self['max_pars']
+
+        extra_noise = self.get('extra_noise',None)
+        if extra_noise is not None:
+            print("        extra noise:",extra_noise)
+        boot.fit_metacal_max(psf_pars['model'],
+                             model,
+                             max_pars,
+                             self['psf_Tguess'],
+                             step=self['metacal_pars']['step'],
+                             prior=self['prior'],
+                             ntry=max_pars['ntry'],
+                             extra_noise=extra_noise)
+
+
+        fitter=boot.get_max_fitter() 
+        res=fitter.get_result()
+
+
+        mres = boot.get_metacal_max_result()
+        res.update(mres)
+
+
+    def copy_galaxy_result(self):
+        """
+        extra copies beyond the default
+        """
+        super(MedsMetacal,self).copy_galaxy_result()
+        res=self.gal_fitter.get_result()
+        if 'g_mean' in res:
+            self.data['mcal_pars'][self.dindex] = res['pars_mean']
+            self.data['mcal_g'][self.dindex] = res['g_mean']
+
+    def make_dtype(self):
+        super(MedsMetacal,self).make_dtype()
+
+        np=ngmix.gmix.get_model_npars(self['model_pars']['model'])
+
+        self.dtype += [
+            ('mcal_pars','f8',np),
+            ('mcal_g','f8',2),
+        ]
+
+    def make_struct(self):
+        super(MedsMetacal,self).make_struct()
+        self.data['mcal_pars'] = DEFVAL
+        self.data['mcal_g'] = DEFVAL
+
+
+class MedsMetacalDegrade(MedsMetacal):
+    def set_defaults(self):
+        super(MedsMetacalDegrade,self).set_defaults()
+        
+        # extra noise is only in the Degrade subclass
+        extra_noise = self.get('extra_noise',None)
+        if 'extra_noise' is None:
+            raise RuntimeError("you must set extra_noise")
+
+    def copy_galaxy_result(self):
+        """
+        extra copies beyond the default
+        """
+        super(MedsMetacalDegrade,self).copy_galaxy_result()
+        res=self.gal_fitter.get_result()
+        if 'g_sens' in res:
+            self.data['mcal_g_sens'][self.dindex] = res['g_sens']
+
+    def make_dtype(self):
+        super(MedsMetacalDegrade,self).make_dtype()
+
+        self.dtype += [
+            ('mcal_g_sens','f8', (2,2) ),
+        ]
+
+    def make_struct(self):
+        super(MedsMetacalDegrade,self).make_struct()
+        self.data['mcal_g_sens'] = PDEFVAL
 
 
 class CompositeMedsFitMax(MedsFitMax):

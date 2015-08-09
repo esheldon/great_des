@@ -15,6 +15,7 @@ parser.add_argument('--missing',action='store_true',
                     help="only write jobs for missing files")
 
 parser.add_argument('-q','--queue',default='long', help="queue to use")
+parser.add_argument('-w','--walltime',default='24:00', help="walltime for job")
 
 
 _master_template="""#!/bin/bash
@@ -155,7 +156,7 @@ _lsf_template="""#!/bin/bash
 #BSUB -J %(job_name)s
 #BSUB -n 1
 #BSUB -oo ./%(job_name)s.oe
-#BSUB -W 24:00
+#BSUB -W %(walltime)s
 #BSUB -R "linux64 && rhel60 && scratch > 2"
 
 echo "working on host: $(hostname)"
@@ -172,12 +173,13 @@ echo "working on host: $(hostname)"
 
 
 class LSFMaker(object):
-    def __init__(self, run, queue, missing=False):
+    def __init__(self, run, queue, walltime, missing=False):
         self.run=run
         self.missing=missing
 
         self.conf=great_des.files.read_config(run=run)
         self.conf['queue']=queue
+        self.conf['walltime']=walltime
 
         self.config_file=great_des.files.get_config_file(run=run)
 
@@ -259,6 +261,8 @@ class LSFMaker(object):
     def get_text(self, **keys):
 
         keys['queue'] = self.conf['queue']
+        keys['walltime'] = self.conf['walltime']
+
         keys['master'] = self.master_file
         keys['gnum']=keys['gnum']
         keys['fnum']=keys['fnum']
@@ -287,7 +291,7 @@ def main():
     if gvals is not None:
         gvals=[int(g) for g in gvals.split(',')]
 
-    cm = LSFMaker(args.run, args.queue, missing=args.missing)
+    cm = LSFMaker(args.run, args.queue, args.walltime, missing=args.missing)
     cm.make_lsf(gvals=gvals)
     cm.make_master()
 

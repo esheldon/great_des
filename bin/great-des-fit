@@ -376,6 +376,12 @@ def run_fitter(files, conf, options, checkpoint_data=None):
         fitclass=great_des.nfit.MedsFit
     elif conf['fitter']=='max':
         fitclass=great_des.nfit.MedsFitMax
+
+    elif conf['fitter']=='metacal':
+        fitclass=great_des.nfit.MedsMetacal
+    elif conf['fitter']=='metacal-degrade':
+        fitclass=great_des.nfit.MedsMetacalDegrade
+
     elif conf['fitter']=='isample':
         fitclass=great_des.nfit.MedsFitISample
     else:
