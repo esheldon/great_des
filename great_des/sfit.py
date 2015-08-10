@@ -60,6 +60,8 @@ class MedsFitBase(dict):
 
         self['randomize_psf'] = self.get('randomize_psf',False)
 
+        self['fix_centroid_bug'] = self.get('fix_centroid_bug',False)
+
     def set_true_shear(self):
         from . import analyze
         if 'gnum' in self:
@@ -222,6 +224,9 @@ class MedsFitBase(dict):
         weight += 1.0/noise**2
 
         jacob=self.get_jacobian()
+
+        row,col=jacob.get_cen()
+        jacob.set_cen(row-1, col-1)
         self.psf_obs = Observation(image, weight=weight, jacobian=jacob)
 
     def get_psf_ext(self):
@@ -425,8 +430,17 @@ class MedsFitBase(dict):
         get the jacobian and return a Jacobian object
         """
         jdict = self.meds.get_jacobian(self.mindex,0)
-        jacob = Jacobian(jdict['row0']-1,
-                         jdict['col0']-1,
+
+        row0=jdict['row0']
+        col0=jdict['col0']
+
+        if self['fix_centroid_bug']:
+            print("fixing centroid bug")
+            row0 = row0 - 1
+            col0 = col0 - 1
+
+        jacob = Jacobian(row0,
+                         col0,
                          jdict['dudrow'],
                          jdict['dudcol'],
                          jdict['dvdrow'],

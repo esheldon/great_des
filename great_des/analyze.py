@@ -23,7 +23,7 @@ SHEARS={0: [ 0.05,  0.  ],
         6: [-0.03536, -0.03536],
         7: [-0.03536,  0.03536]}
 
-def load_data(run, select=True, trim_cols=False, **keys):
+def load_data(run, select=True, trim_cols=False, keep_cols=None, combine=False, **keys):
     """
     load all g collated files into a list of structs
     """
@@ -44,13 +44,19 @@ def load_data(run, select=True, trim_cols=False, **keys):
             data=select_good(data, **keys)
 
         if trim_cols:
-            keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
-                       'efficiency','neff',
-                       's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
-                       'psf_T_r']
+            if keep_cols is None:
+                keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
+                           'efficiency','neff',
+                           's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
+                           'psf_T_r']
             data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
         dlist.append(data)
-    return dlist
+
+    if combine:
+        data=eu.numpy_util.combine_arrlist(dlist)
+        return data
+    else:
+        return dlist
 
 
 def select_good(data,

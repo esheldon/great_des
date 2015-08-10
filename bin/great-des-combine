@@ -118,7 +118,6 @@ def main():
 
                 data['fnum'] = fnum
                 data['id_cosmos'] = truth_data['id_cosmos'][tbeg:tend]
-                data['to_use'] = truth_data['to_use'][tbeg:tend]
                 data['shear_true'][:,0] = truth_data['g1_true'][tbeg:tend]
                 data['shear_true'][:,1] = truth_data['g2_true'][tbeg:tend]
                 data['psf_true_e'][:,0] = truth_data['psf_e1'][tbeg:tend]
@@ -129,6 +128,11 @@ def main():
 
                 data['id_shear'] = truth_data['id_shear'][tbeg:tend]
                 data['id_psf'] = truth_data['id_psf'][tbeg:tend]
+
+                if 'to_use' in truth_data.dtype.names:
+                    data['to_use'] = truth_data['to_use'][tbeg:tend]
+                else:
+                    data['to_use'] = 1
 
                 if add_true_e:
                     data['true_e'][:,0] = truth_data['shape_e1'][tbeg:tend]
