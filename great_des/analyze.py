@@ -704,15 +704,19 @@ def quick_pqr(data, nbin=11, s2n_field='s2n_true',
 class Analyzer(dict):
     """
     analyze m and c vs various parameters
+
+    wstyles should be 'tracecov' or None
+
+    If deep data are sent, sensitivity refers to fields in that data
     """
     def __init__(self,
                  dlist,
-                 g_field='g',
-                 gcov_field='g_cov',
-                 sens_field=None,
-                 sens_style='lensfit',
+                 sens_style='metacal',
+                 g_field='mcal_g',
+                 gcov_field='mcal_pars_cov', # forgot to record mcal_g_cov separately
+                 sens_field='mcal_g_sens',
                  wstyle=None,
-                 s2n_field='s2n_r'):
+                 deep_data=None):
 
         self.dlist=dlist
         self.g_field=g_field
@@ -721,9 +725,9 @@ class Analyzer(dict):
         self.sens_style=sens_style
         self.wstyle=wstyle
 
-        self.s2n_field=s2n_field
+        self.deep_data=deep_data
 
-    def fit_m_c(self, show=False, doprint=False, get_plt=False, dlist=None):
+    def fit_m_c(self, show=False, doprint=False, get_plt=False, dlist=None, deep_data=None):
         """
         get m and c
 
@@ -734,6 +738,10 @@ class Analyzer(dict):
         if dlist is None:
             dlist=self.dlist
 
+        if deep_data is None:
+            # could still be None!
+            deep_data=self.deep_data
+
         ng = len(dlist)
         gtrue = numpy.zeros( (ng,2) )
         gdiff = gtrue.copy()
@@ -741,7 +749,7 @@ class Analyzer(dict):
 
         nobj=0
         for i,data in enumerate(dlist):
-            gtrue[i,:],gmean,gcov=self.calc_gmean(data)
+            gtrue[i,:],gmean,gcov=self.calc_gmean(data, deep_data=deep_data)
             gdiff[i,:] = gmean - gtrue[i,:]
             gdiff_err[i,:] = sqrt(diag(gcov))
 
@@ -799,11 +807,13 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
 
         dlist=self.dlist
 
-        # get reverse indices for our binning
-        revlist=[]
-        for d in dlist:
-            rev=self._do_hist1(d[field], minval, maxval, nbin, dolog=dolog)
-            revlist.append(rev)
+        revlist=self._do_hist_many(dlist, field, minval, maxval, nbin, dolog=dolog)
+
+        # select deep data the same way
+        deep_data=self.deep_data
+        if deep_data is not None:
+            dodeep=True
+            deep_rev = self.do_hist1(deep_data, minval, maxval, nbin, dolog=dolog)
 
         m1=numpy.zeros(nbin)
         m1err=numpy.zeros(nbin)
@@ -828,8 +838,6 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
             for d,w in zip(dlist,wlist):
                 td = d[w].copy()
 
-                #if self.sens_style is not None:
-                #    ssum += td[self.sens_field].sum(axis=0) 
 
                 wts = self.get_weights(td)
                 f_sum += (wts*td[field]).sum()
@@ -838,16 +846,6 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
                 num[i] += td.size
 
                 cut_dlist.append(td)
-
-            '''
-            if self.sens_style is not None:
-                ssum /= num[i]
-                for d in cut_dlist:
-                    d[self.sens_field][:,0,0] = ssum[0,0]
-                    d[self.sens_field][:,0,1] = ssum[0,1]
-                    d[self.sens_field][:,1,0] = ssum[1,0]
-                    d[self.sens_field][:,1,1] = ssum[1,1]
-            '''
 
             res = self.fit_m_c(dlist=cut_dlist, doprint=True)
 
@@ -940,7 +938,7 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
 
 
 
-    def calc_gmean(self, data):
+    def calc_gmean(self, data, deep_data=None):
         """
         get gtrue, gmeas, gcov
         """
@@ -950,6 +948,9 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
 
         wts=self.get_weights(data)
 
+        if deep_data is not None:
+            deep_wts = self.get_weights(deep_data)
+
         #print("using sens:",self.sens_field)
 
         chunksize=1000
@@ -958,6 +959,7 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
         #print("chunksize:",chunksize)
 
         if self.sens_style=='lensfit':
+            raise RuntimeError("lensfit not working yet")
             if self.sens_field is None:
                 sens = numpy.ones( (data.size, 2) )
             else:
@@ -973,16 +975,27 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
                 sens = numpy.ones( (data.size,2,2) )
             else:
                 import images
-                sens = data[self.sens_field].copy()
-                #sens[:,0,1]=0
-                #sens[:,1,0]=0
-                print("mean sens:")
-                images.imprint(sens.mean(axis=0), fmt='%g')
-                #savg=sens.mean(axis=0)
-                #sens[:,0,0] = savg[0,0]
-                #sens[:,0,1] = savg[0,1]
-                #sens[:,1,0] = savg[1,0]
-                #sens[:,1,1] = savg[1,1]
+
+                if deep_data is not None:
+                    print("    using mean sensitivity from deep data")
+
+                    wsum = deep_wts.sum()
+                    wa = deep_wts[:,newaxis,newaxis]
+
+                    s=deep_data[self.sens_field]
+                    sens_mean = (s*wa).sum(axis=0)/wsum
+
+                    sens = numpy.zeros( (data.size,2,2) )
+                    sens[:,0,0] = sens_mean[0,0]
+                    sens[:,0,1] = sens_mean[0,1]
+                    sens[:,1,0] = sens_mean[1,0]
+                    sens[:,1,1] = sens_mean[1,1]
+                else:
+                    print("    using sensitivity from this data")
+                    sens = data[self.sens_field].copy()
+
+            print("mean sens:")
+            images.imprint(sens.mean(axis=0), fmt='%g')
 
             res = ngmix.metacal.jackknife_shear(data[self.g_field],
                                                 sens,
@@ -1007,7 +1020,12 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
 
         if self.wstyle=='tracecov':
 
-            gcov = data[self.gcov_field]
+            if 'g_cov' in self.gcov_field:
+                gcov = data[self.gcov_field]
+            else:
+                cov = data[self.gcov_field]
+                gcov = cov[:,2:2+2, 2:2+2]
+
             csum=gcov[:,0,0] + gcov[:,1,1]
 
             wts=1.0/(2*SN**2 + csum)
@@ -1080,6 +1098,15 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
             mplt.show()
             cplt.show()
         return mplt, cplt
+
+    def _do_hist_many(self, dlist, field, minval, maxval, nbin, dolog=True):
+        # get reverse indices for our binning
+        revlist=[]
+        for d in dlist:
+            rev=self._do_hist1(d[field], minval, maxval, nbin, dolog=dolog)
+            revlist.append(rev)
+
+        return revlist
 
     def _do_hist1(self, data, minval, maxval, nbin, dolog=True):
         import esutil as eu
