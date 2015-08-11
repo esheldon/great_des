@@ -217,8 +217,8 @@ class LSFMaker(object):
         for ignum,gnum in enumerate(gvals):
             print("    gnum: %d  %d/%d" % (gnum,ignum+1,ngvals_use))
             for fnum in xrange(nf):
-                if (fnum % 10) == 0:
-                    print("        fnum: %d/%d" % (fnum+1,nf))
+                #if (fnum % 10) == 0:
+                #    print("        fnum: %d/%d" % (fnum+1,nf))
 
                 if ignum==0 and fnum==0:
                     low,high = files.get_chunk_ranges(gdrun=gdrun,
@@ -239,7 +239,6 @@ class LSFMaker(object):
                                                           end=end,
                                                           missing=self.missing)
 
-                    print(lsf_file)
 
                     text,output_file=self.get_text(run=self.run,
                                                    fnum=fnum,
@@ -251,6 +250,7 @@ class LSFMaker(object):
                         if os.path.exists(output_file):
                             continue
 
+                    print(lsf_file)
                     with open(lsf_file,'w') as fobj: 
                         fobj.write(text)
 

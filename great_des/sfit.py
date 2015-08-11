@@ -573,7 +573,7 @@ class MedsFitBase(dict):
 
         rres = self.boot.get_round_result()
         data['flags_r'][dindex] = rres['flags']
-        data[n('T_r')][dindex]  = rres['pars'][4]
+        data['T_r'][dindex]  = rres['T_r']
         data['s2n_r'][dindex]   = rres['s2n_r']
         data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
@@ -630,7 +630,7 @@ class MedsFitBase(dict):
             ('T_s2n','f8'),
 
             ('flags_r','i4'),
-            (n('T_r'),'f8'),
+            ('T_r','f8'),
             ('s2n_r','f8'),
             ('psf_T_r','f8'),
 
@@ -666,7 +666,7 @@ class MedsFitBase(dict):
         data['T_s2n'] = PDEFVAL
 
         data['flags_r'] = NO_ATTEMPT
-        data[n('T_r')] = DEFVAL
+        data['T_r'] = DEFVAL
         data['s2n_r'] = DEFVAL
         data['psf_T_r'] = DEFVAL
 
@@ -771,13 +771,19 @@ class MedsMetacal(MedsFitMax):
         extra copies beyond the default
         """
         super(MedsMetacal,self).copy_galaxy_result()
+
+        n=self.get_namer()
         res=self.gal_fitter.get_result()
+
         if 'mcal_pars_mean' in res:
 
             self.data['mcal_pars'][self.dindex,:] = res['mcal_pars_mean']
             self.data['mcal_pars_cov'][self.dindex,:,:] = res['mcal_pars_mean_cov']
-            self.data['mcal_s2n_r'][self.dindex] = res['mcal_s2n_r']
             self.data['mcal_g'][self.dindex] = res['mcal_g_mean']
+
+            self.data['mcal_s2n_r'][self.dindex] = res['mcal_s2n_r']
+            self.data['mcal_T_r'][self.dindex] = res['mcal_T_r']
+            self.data['mcal_psf_T_r'][self.dindex] = res['mcal_psf_T_r']
 
             if self['save_g_sens']:
                 self.data['mcal_g_sens'][self.dindex] = res['mcal_g_sens']
@@ -799,8 +805,10 @@ class MedsMetacal(MedsFitMax):
         self.dtype += [
             ('mcal_pars','f8',np),
             ('mcal_pars_cov','f8', (np,np) ),
-            ('mcal_s2n_r','f8'),
             ('mcal_g','f8',2),
+            ('mcal_s2n_r','f8'),
+            ('mcal_T_r','f8'),
+            ('mcal_psf_T_r','f8'),
         ]
 
         if self['save_g_sens']:
@@ -810,8 +818,10 @@ class MedsMetacal(MedsFitMax):
         super(MedsMetacal,self).make_struct()
         self.data['mcal_pars'] = DEFVAL
         self.data['mcal_pars_cov'] = PDEFVAL
-        self.data['mcal_s2n_r'] = DEFVAL
         self.data['mcal_g'] = DEFVAL
+        self.data['mcal_s2n_r'] = DEFVAL
+        self.data['mcal_T_r'] = DEFVAL
+        self.data['mcal_psf_T_r'] = DEFVAL
 
         if self['save_g_sens']:
             self.data['mcal_g_sens'] = PDEFVAL
