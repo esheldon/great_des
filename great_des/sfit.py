@@ -192,8 +192,7 @@ class MedsFitBase(dict):
 
     def do_round_measures(self):
         rpars=self['round_pars']
-        self.boot.set_round_s2n(self['max_pars'],
-                                fitter_type=rpars['fitter_type'])
+        self.boot.set_round_s2n(fitter_type=rpars['fitter_type'])
 
 
     def get_bootstrapper(self):
@@ -223,7 +222,7 @@ class MedsFitBase(dict):
         weight *= 0
         weight += 1.0/noise**2
 
-        jacob=self.get_jacobian()
+        jacob=self.get_jacobian(type='psf')
 
         row,col=jacob.get_cen()
         jacob.set_cen(row-1, col-1)
@@ -425,7 +424,7 @@ class MedsFitBase(dict):
         plt.write_img(1400,800,pname)
 
 
-    def get_jacobian(self):
+    def get_jacobian(self, type='galaxy'):
         """
         get the jacobian and return a Jacobian object
         """
@@ -434,7 +433,7 @@ class MedsFitBase(dict):
         row0=jdict['row0']
         col0=jdict['col0']
 
-        if self['fix_centroid_bug']:
+        if self['fix_centroid_bug'] and type=='galaxy':
             print("fixing centroid bug")
             row0 = row0 - 1
             col0 = col0 - 1
@@ -724,6 +723,11 @@ class MedsFitMax(MedsFitBase):
         self.data['nfev'] = PDEFVAL
 
 class MedsMetacal(MedsFitMax):
+    def set_defaults(self):
+        super(MedsMetacal,self).set_defaults()
+        
+        self['save_g_sens'] = self.get('save_g_sens',False)
+
     def fit_galaxy(self):
         """
         fit with max like, using a MaxRunner object
@@ -762,16 +766,30 @@ class MedsMetacal(MedsFitMax):
         mres = boot.get_metacal_max_result()
         res.update(mres)
 
-
     def copy_galaxy_result(self):
         """
         extra copies beyond the default
         """
         super(MedsMetacal,self).copy_galaxy_result()
         res=self.gal_fitter.get_result()
-        if 'g_mean' in res:
-            self.data['mcal_pars'][self.dindex] = res['pars_mean']
-            self.data['mcal_g'][self.dindex] = res['g_mean']
+        if 'mcal_pars_mean' in res:
+
+            self.data['mcal_pars'][self.dindex,:] = res['mcal_pars_mean']
+            self.data['mcal_pars_cov'][self.dindex,:,:] = res['mcal_pars_mean_cov']
+            self.data['mcal_s2n_r'][self.dindex] = res['mcal_s2n_r']
+            self.data['mcal_g'][self.dindex] = res['mcal_g_mean']
+
+            if self['save_g_sens']:
+                self.data['mcal_g_sens'][self.dindex] = res['mcal_g_sens']
+
+    def print_galaxy_result(self):
+        super(MedsMetacal,self).print_galaxy_result()
+        res=self.gal_fitter.get_result()
+
+        if 'mcal_s2n_r' in res:
+            tup=tuple( [res['mcal_s2n_r']] + list(res['mcal_g_sens'].ravel()) )
+            print("    mcal s2n_r: %.1f sens: %g %g %g %g" % tup)
+
 
     def make_dtype(self):
         super(MedsMetacal,self).make_dtype()
@@ -780,16 +798,32 @@ class MedsMetacal(MedsFitMax):
 
         self.dtype += [
             ('mcal_pars','f8',np),
+            ('mcal_pars_cov','f8', (np,np) ),
+            ('mcal_s2n_r','f8'),
             ('mcal_g','f8',2),
         ]
+
+        if self['save_g_sens']:
+            self.dtype += [('mcal_g_sens','f8',(2,2))]
 
     def make_struct(self):
         super(MedsMetacal,self).make_struct()
         self.data['mcal_pars'] = DEFVAL
+        self.data['mcal_pars_cov'] = PDEFVAL
+        self.data['mcal_s2n_r'] = DEFVAL
         self.data['mcal_g'] = DEFVAL
+
+        if self['save_g_sens']:
+            self.data['mcal_g_sens'] = PDEFVAL
 
 
 class MedsMetacalDegrade(MedsMetacal):
+    """
+    in this version we add extra noise and we save the sensitivity
+
+    the idea is to take a high s/n sample and do metacal on it
+    at higher noise
+    """
     def set_defaults(self):
         super(MedsMetacalDegrade,self).set_defaults()
         
@@ -798,25 +832,10 @@ class MedsMetacalDegrade(MedsMetacal):
         if 'extra_noise' is None:
             raise RuntimeError("you must set extra_noise")
 
-    def copy_galaxy_result(self):
-        """
-        extra copies beyond the default
-        """
-        super(MedsMetacalDegrade,self).copy_galaxy_result()
-        res=self.gal_fitter.get_result()
-        if 'g_sens' in res:
-            self.data['mcal_g_sens'][self.dindex] = res['g_sens']
+        # we always save the sensitivity; degrad is the high
+        # s/n sample
+        self['save_g_sens'] = True
 
-    def make_dtype(self):
-        super(MedsMetacalDegrade,self).make_dtype()
-
-        self.dtype += [
-            ('mcal_g_sens','f8', (2,2) ),
-        ]
-
-    def make_struct(self):
-        super(MedsMetacalDegrade,self).make_struct()
-        self.data['mcal_g_sens'] = PDEFVAL
 
 
 class CompositeMedsFitMax(MedsFitMax):
