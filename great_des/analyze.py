@@ -80,6 +80,7 @@ def select_good(data,
                 min_efficiency=None,
                 max_chi2per=None,
                 s2n_r_range=None,
+                mcal_s2n_r_range=None,
                 Ts2n_r_range=None,
                 fracdev_err_max=None,
                 cut_fracdev_exact=False,
@@ -129,6 +130,15 @@ def select_good(data,
                 print("    kept %d/%d from s2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
                 logic = logic & elogic
 
+    if mcal_s2n_r_range is not None:
+        field='mcal_s2n_r'
+        if field in data.dtype.names:
+            rng=mcal_s2n_r_range
+            elogic = between(data[field], rng[0], rng[1])
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from %s in [%g,%g]" % (w.size, data.size, field, rng[0],rng[1]))
+                logic = logic & elogic
 
 
     if min_Ts2n is not None:
@@ -860,6 +870,75 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
                 'c1err':c1err,
                 'c2':c2,
                 'c2err':c2err}
+
+    def plot_m_c_vs(self, res, name, xlog=True, show=False):
+        """
+        result from fit_m_c_vs
+        """
+
+        import biggles
+        tab=biggles.Table(2,1)
+
+        xvals = res['mean']
+
+        if xlog:
+            xrng=[0.75*xvals.min(), 1.5*xvals.max()]
+        else:
+            xrng=[0.9*xvals.min(), 1.1*xvals.max()]
+
+
+        m1c=biggles.Points(xvals, res['m1'],
+                          type='filled circle', color='blue')
+        m1c.label='m1'
+        m1errc=biggles.SymmetricErrorBarsY(xvals, res['m1'], res['m1err'],
+                                           color='blue')
+
+        m2c=biggles.Points(xvals, res['m2'],
+                          type='filled circle', color='red')
+        m2c.label='m2'
+        m2errc=biggles.SymmetricErrorBarsY(xvals, res['m2'], res['m2err'],
+                                           color='red')
+        mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
+
+
+        c1c=biggles.Points(xvals, res['c1'],
+                          type='filled circle', color='blue')
+        c1c.label='c1'
+        c1errc=biggles.SymmetricErrorBarsY(xvals, res['c1'], res['c1err'],
+                                           color='blue')
+
+        c2c=biggles.Points(xvals, res['c2'],
+                          type='filled circle', color='red')
+        c2c.label='c2'
+        c2errc=biggles.SymmetricErrorBarsY(xvals, res['c2'], res['c2err'],
+                                           color='red')
+        ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
+
+        zc=biggles.Curve(xvals, xvals*0)
+
+        mplt=biggles.FramedPlot()
+        mplt.xlabel=name
+        mplt.ylabel='m'
+        mplt.xrange=xrng
+        mplt.xlog=xlog
+        mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
+
+        cplt=biggles.FramedPlot()
+        cplt.xlabel=name
+        cplt.ylabel='c'
+        cplt.xrange=xrng
+        cplt.xlog=xlog
+        cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
+
+        tab[0,0] = mplt
+        tab[1,0] = cplt
+
+        if show:
+            tab.show()
+        return tab
+
+
+
 
     def calc_gmean(self, data):
         """
