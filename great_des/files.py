@@ -533,7 +533,7 @@ def read_collated(**keys):
 
     fname=get_collated_file(**keys)
     print("reading:",fname)
-    return fitsio.read(fname)
+    return fitsio.read(fname, **keys)
 
 def read_output(**keys):
     """

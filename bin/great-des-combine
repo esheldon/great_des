@@ -18,6 +18,8 @@ from optparse import OptionParser
 parser = OptionParser(__doc__)
 parser.add_option('--allow-missing',action='store_true')
 
+parser.add_option('--fix-averages',action='store_true')
+
 def read_output(**conf):
     data0 = files.read_output(**conf)
 
@@ -33,8 +35,6 @@ def read_output(**conf):
             ('id_psf','i8'),
             ('true_e','f4',2),
             ('true_hlr','f4')]
-
-
 
     data=eu.numpy_util.add_fields(data0, add_dt)
 
@@ -105,6 +105,11 @@ def main():
                     continue
 
                 data=read_output(**conf)
+
+                if options.fix_averages:
+                    for field in ['mcal_s2n_r','mcal_T_r','mcal_psf_T_r']:
+                        data[field] *= 0.25
+
                 tbeg=low[i]
                 tend=high[i]+1
 

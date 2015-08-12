@@ -24,11 +24,10 @@ function run_fit {
     echo "will write to file: $output"
 
     great-des-fit-bynum \\
-        --work-dir=$tmpdir                \\
-        ${run}                    \\
-        ${gnum}                      \\
-        ${fnum}                     \\
-        ${start} \\
+        ${run}          \\
+        ${gnum}         \\
+        ${fnum}         \\
+        ${start}        \\
         ${end}
 
     status=$?

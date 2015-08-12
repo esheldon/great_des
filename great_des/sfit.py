@@ -87,6 +87,8 @@ class MedsFitBase(dict):
 
             print("%d:%d  %d:%d" % (dindex, last, mindex, self['end']))
 
+            #print(self.data.size, self.meds.size)
+            #print(dindex, mindex)
             self.data['number'][dindex] = self.meds['number'][mindex]
 
             self.make_psf_observation()
