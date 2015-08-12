@@ -727,7 +727,8 @@ class Analyzer(dict):
 
         self.deep_data=deep_data
 
-    def fit_m_c(self, show=False, doprint=False, get_plt=False, dlist=None, deep_data=None):
+    def fit_m_c(self, show=False, doprint=False,
+                get_plt=False, dlist=None, deep_data=None):
         """
         get m and c
 
@@ -813,7 +814,10 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
         deep_data=self.deep_data
         if deep_data is not None:
             dodeep=True
-            deep_rev = self.do_hist1(deep_data, minval, maxval, nbin, dolog=dolog)
+            drev = self._do_hist1(deep_data[field],
+                                      minval, maxval, nbin, dolog=dolog)
+        else:
+            tdeep_data=None
 
         m1=numpy.zeros(nbin)
         m1err=numpy.zeros(nbin)
@@ -847,7 +851,12 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
 
                 cut_dlist.append(td)
 
-            res = self.fit_m_c(dlist=cut_dlist, doprint=True)
+            if deep_data is not None:
+                tdeep_data=deep_data[ drev[ drev[i]:drev[i+1] ] ]
+
+            res = self.fit_m_c(dlist=cut_dlist,
+                               deep_data=tdeep_data,
+                               doprint=True)
 
             m1[i],m2[i],c1[i],c2[i] = res['m1'],res['m2'],res['c1'],res['c2']
             m1err[i],m2err[i]=res['m1err'],res['m2err']
@@ -949,6 +958,7 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
         wts=self.get_weights(data)
 
         if deep_data is not None:
+            print("getting deep data weights")
             deep_wts = self.get_weights(deep_data)
 
         #print("using sens:",self.sens_field)
