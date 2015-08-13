@@ -23,39 +23,72 @@ SHEARS={0: [ 0.05,  0.  ],
         6: [-0.03536, -0.03536],
         7: [-0.03536,  0.03536]}
 
-def load_data(run, select=True, trim_cols=False, pqr=False, **keys):
+def load_data(run,
+              gnum=None,
+              columns=None,
+              keep_cols=None,
+              select=True,
+              combine=False,
+              **keys):
     """
     load all g collated files into a list of structs
+
+    parameters
+    ----------
+    run: string
+        run name
+    gnum: int, optional
+        shear number.  If sent just return this one struct
+    columns: list, optional
+        Columns to read from the colllated file.  These are all available
+        for selection
+    keep_cols: list, optional
+        Columns to finally keep from the collated file
+    select: bool, optional
+        If True, do selections.  Default True
+    combine: bool, optional
+        If True, do combine into a single struct.  Default False
+    **keys:
+        Other keywords for selections
     """
     import fitsio
     import esutil as eu 
 
     conf=files.read_config(run=run)
 
+    if gnum is not None:
+        gnums = [gnum]
+    else:
+        gnums = range(conf['ng'])
+
     dlist=[]
     for i in xrange(conf['ng']):
         fname=files.get_collated_file(run=run, gnum=i)
 
         print("reading:",fname)
-        data=fitsio.read(fname)
+        data=fitsio.read(fname, columns=columns)
 
         if select:
             print("    selecting")
             data=select_good(data, **keys)
 
-        if trim_cols:
-            keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
-                       'efficiency','neff',
-                       's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
-                       'psf_T_r']
-            if pqr:
-                keep_cols += ['P','Q','R']
+        if keep_cols is not None:
             data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
+
         dlist.append(data)
-    return dlist
+
+    if gnum is not None:
+        return dlist[0]
+
+    if combine:
+        data=eu.numpy_util.combine_arrlist(dlist)
+        return data
+    else:
+        return dlist
 
 
 def select_good(data,
+                g_field='g',
                 min_T=None,
                 T_range=None,
                 flux_range=None,
@@ -68,6 +101,7 @@ def select_good(data,
                 min_efficiency=None,
                 max_chi2per=None,
                 s2n_r_range=None,
+                mcal_s2n_r_range=None,
                 Ts2n_r_range=None,
                 fracdev_err_max=None,
                 cut_fracdev_exact=False,
@@ -86,12 +120,15 @@ def select_good(data,
         print("    kept %d/%d from flags" % (w.size, data.size))
         logic = logic & elogic
 
-    g = numpy.sqrt( data['g'][:,0]**2 + data['g'][:,1]**2 )
-    elogic = (g < max_g)
-    w,=where(elogic)
-    if w.size != data.size:
-        print("    kept %d/%d from g < %g" % (w.size, data.size, max_g))
-        logic = logic & elogic
+
+    if g_field in data.dtype.names:
+        gv = data[g_field]
+        g = numpy.sqrt( gv[:,0]**2 + gv[:,1]**2 )
+        elogic = (g < max_g)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from %s < %g" % (w.size, data.size, g_field, max_g))
+            logic = logic & elogic
 
     if min_s2n is not None:
         elogic = (data['s2n_w'] > min_s2n)
@@ -117,6 +154,15 @@ def select_good(data,
                 print("    kept %d/%d from s2n_r in [%g,%g]" % (w.size, data.size, rng[0],rng[1]))
                 logic = logic & elogic
 
+    if mcal_s2n_r_range is not None:
+        field='mcal_s2n_r'
+        if field in data.dtype.names:
+            rng=mcal_s2n_r_range
+            elogic = between(data[field], rng[0], rng[1])
+            w,=where(elogic)
+            if w.size != data.size:
+                print("    kept %d/%d from %s in [%g,%g]" % (w.size, data.size, field, rng[0],rng[1]))
+                logic = logic & elogic
 
 
     if min_Ts2n is not None:
@@ -217,8 +263,13 @@ def select_good(data,
 
 
     if min_Trat is not None:
-        T_r = exp(data['log_T_r'])
+        if 'log_T_r' in data.dtype.names:
+            T_r = exp(data['log_T_r'])
+        else:
+            T_r = data['T_r']
+
         Trat = T_r/data['psf_T_r']
+
         elogic = (Trat > min_Trat)
         w,=where(elogic)
         if w.size != data.size:
@@ -251,7 +302,7 @@ def get_weights(data, wstyle='tracecov'):
 
     return wts
 
-def fit_m_c(dlist, pqr=False, wstyle='tracecov', show=False, doprint=False, get_plt=False):
+def fit_m_c(dlist, gfield='g', wstyle='tracecov', show=False, doprint=False, get_plt=False):
     """
     get m and c
     """
@@ -573,28 +624,16 @@ def calc_gmean(data, pqr=False, wstyle='tracecov'):
     import jackknife
     gtrue = data['shear_true'].mean(axis=0)
 
-    if pqr:
-        import ngmix
-        gmeas, gcov = ngmix.pqr.calc_shear(data['P'],
-                                           data['Q'],
-                                           data['R'])
-        # we expanded about the trugh
-        gmeas += gtrue
+    wts=get_weights(data, wstyle=wstyle)
+
+    wa=wts[:,newaxis]
+    jdsum=data['g']*wa
+    if 'g_sens' in data.dtype.names:
+        jwsum=data['g_sens']*wa
     else:
-        gmeas = numpy.zeros(2)
+        jwsum=numpy.ones( data['g'].shape )*wa
 
-        wts=get_weights(data, wstyle=wstyle)
-
-        wa=wts[:,newaxis]
-        jdsum=data['g']*wa
-        if 'g_sens' in data.dtype.names:
-            jwsum=data['g_sens']*wa
-        else:
-            jwsum=numpy.ones( data['g'].shape )*wa
-        #print(jdsum.shape)
-
-        gmeas,gcov=jackknife.wjackknife(vsum=jdsum, wsum=jwsum)
-    #print("gmeas j:",gmeas)
+    gmeas,gcov=jackknife.wjackknife(vsum=jdsum, wsum=jwsum)
 
     return gtrue, gmeas, gcov
 
@@ -685,25 +724,355 @@ def quick_pqr(data, nbin=11, s2n_field='s2n_true',
 
 
 
-class AnalyzerS2N(dict):
+class Analyzer(dict):
     """
     analyze m and c vs various parameters
-    """
-    def __init__(self, nbin=12, min_s2n=10., max_s2n=200., wstyle='tracecov'):
-        self.nbin=nbin
-        self.min_s2n=min_s2n
-        self.max_s2n=max_s2n
 
+    wstyles should be 'tracecov' or None
+
+    If deep data are sent, sensitivity refers to fields in that data
+    """
+    def __init__(self,
+                 dlist,
+                 sens_style='metacal',
+                 g_field='mcal_g',
+                 gcov_field='mcal_pars_cov', # forgot to record mcal_g_cov separately
+                 sens_field='mcal_g_sens',
+                 wstyle=None,
+                 deep_data=None):
+
+        self.dlist=dlist
+        self.g_field=g_field
+        self.gcov_field=gcov_field
+        self.sens_field=sens_field
+        self.sens_style=sens_style
         self.wstyle=wstyle
 
-    def go(self, dlist):
-        """
-        dlist is data for each g value
+        self.deep_data=deep_data
 
-        data should already be trimmed
+    def fit_m_c(self, show=False, doprint=False,
+                get_plt=False, dlist=None, deep_data=None):
+        """
+        get m and c
+
+        sens dlist= to specify different data to fit
+        """
+        import fitting
+
+        if dlist is None:
+            dlist=self.dlist
+
+        if deep_data is None:
+            # could still be None!
+            deep_data=self.deep_data
+
+        ng = len(dlist)
+        gtrue = numpy.zeros( (ng,2) )
+        gdiff = gtrue.copy()
+        gdiff_err = gtrue.copy()
+
+        nobj=0
+        for i,data in enumerate(dlist):
+            gtrue[i,:],gmean,gcov=self.calc_gmean(data, deep_data=deep_data)
+            gdiff[i,:] = gmean - gtrue[i,:]
+            gdiff_err[i,:] = sqrt(diag(gcov))
+
+            nobj += data.size
+
+        lf1=fitting.fit_line(gtrue[:,0], gdiff[:,0], yerr=gdiff_err[:,0])
+        lf2=fitting.fit_line(gtrue[:,1], gdiff[:,1], yerr=gdiff_err[:,1])
+        fitters=[lf1,lf2]
+
+
+        m1,c1 = lf1.pars
+        m1err,c1err = lf1.perr
+        m2,c2 = lf2.pars
+        m2err,c2err = lf2.perr
+
+        res={'nobj':nobj,
+             'm1':m1,
+             'm1err':m1err,
+             'm2':m2,
+             'm2err':m2err,
+             'c1':c1,
+             'c1err':c1err,
+             'c2':c2,
+             'c2err':c2err}
+
+        if doprint:
+            mess="""nobj: %(nobj)d
+m1: %(m1).3g +/- %(m1err).3g
+m2: %(m2).3g +/- %(m2err).3g
+c1: %(c1).3g +/- %(c1err).3g
+c2: %(c2).3g +/- %(c2err).3g""".strip()
+            mess = mess % res
+            print(mess)
+
+        if get_plt or show:
+            plt=plot_gdiff_vs_gtrue(gtrue, gdiff, gdiff_err, fitters=[lf1,lf2])
+
+            if show:
+                plt.show()
+
+        if get_plt:
+            return res, plt
+        else:
+            return res
+
+
+    def fit_m_c_vs(self, field, minval, maxval, nbin, dolog=True):
+        """
+        calculate m and c in bins of some variable
+
+        returns
+        -------
+        means, m, merr, c, cerr
         """
 
-        self._calc_m_c(dlist)
+        dlist=self.dlist
+
+        revlist=self._do_hist_many(dlist, field, minval, maxval, nbin, dolog=dolog)
+
+        # select deep data the same way
+        deep_data=self.deep_data
+        if deep_data is not None:
+            dodeep=True
+            drev = self._do_hist1(deep_data[field],
+                                      minval, maxval, nbin, dolog=dolog)
+        else:
+            tdeep_data=None
+
+        m1=numpy.zeros(nbin)
+        m1err=numpy.zeros(nbin)
+        m2=numpy.zeros(nbin)
+        m2err=numpy.zeros(nbin)
+        c1=numpy.zeros(nbin)
+        c1err=numpy.zeros(nbin)
+        c2=numpy.zeros(nbin)
+        c2err=numpy.zeros(nbin)
+
+        fmean=numpy.zeros(nbin)
+        num=numpy.zeros(nbin,dtype='i8')
+
+        for i in xrange(nbin):
+            wlist=[ rev[ rev[i]:rev[i+1] ] for rev in revlist ]
+
+            f_sum=0.0
+            wsum=0.0
+            cut_dlist=[]
+            
+            ssum = numpy.zeros( (2,2) )
+            for d,w in zip(dlist,wlist):
+                td = d[w].copy()
+
+
+                wts = self.get_weights(td)
+                f_sum += (wts*td[field]).sum()
+                wsum += wts.sum()
+
+                num[i] += td.size
+
+                cut_dlist.append(td)
+
+            if deep_data is not None:
+                tdeep_data=deep_data[ drev[ drev[i]:drev[i+1] ] ]
+
+            res = self.fit_m_c(dlist=cut_dlist,
+                               deep_data=tdeep_data,
+                               doprint=True)
+
+            m1[i],m2[i],c1[i],c2[i] = res['m1'],res['m2'],res['c1'],res['c2']
+            m1err[i],m2err[i]=res['m1err'],res['m2err']
+            c1err[i],c2err[i] = res['c1err'],res['c2err']
+
+            fmean[i] = f_sum/wsum
+
+            print("%s mean: %g" % (field, fmean[i]))
+            print()
+
+        return {'mean':fmean,
+                'num':num,
+                'm1':m1,
+                'm1err':m1err,
+                'm2':m2,
+                'm2err':m2err,
+                'c1':c1,
+                'c1err':c1err,
+                'c2':c2,
+                'c2err':c2err}
+
+    def plot_m_c_vs(self, res, name, xlog=True, show=False):
+        """
+        result from fit_m_c_vs
+        """
+
+        import biggles
+        tab=biggles.Table(2,1)
+
+        xvals = res['mean']
+
+        if xlog:
+            xrng=[0.75*xvals.min(), 1.5*xvals.max()]
+        else:
+            xrng=[0.9*xvals.min(), 1.1*xvals.max()]
+
+
+        m1c=biggles.Points(xvals, res['m1'],
+                          type='filled circle', color='blue')
+        m1c.label='m1'
+        m1errc=biggles.SymmetricErrorBarsY(xvals, res['m1'], res['m1err'],
+                                           color='blue')
+
+        m2c=biggles.Points(xvals, res['m2'],
+                          type='filled circle', color='red')
+        m2c.label='m2'
+        m2errc=biggles.SymmetricErrorBarsY(xvals, res['m2'], res['m2err'],
+                                           color='red')
+        mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
+
+
+        c1c=biggles.Points(xvals, res['c1'],
+                          type='filled circle', color='blue')
+        c1c.label='c1'
+        c1errc=biggles.SymmetricErrorBarsY(xvals, res['c1'], res['c1err'],
+                                           color='blue')
+
+        c2c=biggles.Points(xvals, res['c2'],
+                          type='filled circle', color='red')
+        c2c.label='c2'
+        c2errc=biggles.SymmetricErrorBarsY(xvals, res['c2'], res['c2err'],
+                                           color='red')
+        ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
+
+        zc=biggles.Curve(xvals, xvals*0)
+
+        mplt=biggles.FramedPlot()
+        mplt.xlabel=name
+        mplt.ylabel='m'
+        mplt.xrange=xrng
+        mplt.xlog=xlog
+        mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
+
+        cplt=biggles.FramedPlot()
+        cplt.xlabel=name
+        cplt.ylabel='c'
+        cplt.xrange=xrng
+        cplt.xlog=xlog
+        cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
+
+        tab[0,0] = mplt
+        tab[1,0] = cplt
+
+        if show:
+            tab.show()
+        return tab
+
+
+
+
+    def calc_gmean(self, data, deep_data=None):
+        """
+        get gtrue, gmeas, gcov
+        """
+        import ngmix
+
+        gtrue = data['shear_true'].mean(axis=0)
+
+        wts=self.get_weights(data)
+
+        if deep_data is not None:
+            print("getting deep data weights")
+            deep_wts = self.get_weights(deep_data)
+
+        #print("using sens:",self.sens_field)
+
+        chunksize=1000
+        if chunksize > data.size/10.0:
+            chunksize = data.size/10
+        #print("chunksize:",chunksize)
+
+        if self.sens_style=='lensfit':
+            raise RuntimeError("lensfit not working yet")
+            if self.sens_field is None:
+                sens = numpy.ones( (data.size, 2) )
+            else:
+                sens = data[self.sens_field].copy()
+
+            gmeas, gcov = ngmix.lensfit.lensfit_jackknife(data[self.g_field],
+                                                          sens,
+                                                          weights=wts,
+                                                          chunksize=chunksize)
+        elif self.sens_style=='metacal':
+
+            if self.sens_field is None:
+                sens = numpy.ones( (data.size,2,2) )
+            else:
+                import images
+
+                if deep_data is not None:
+                    print("    using mean sensitivity from deep data")
+
+                    wsum = deep_wts.sum()
+                    wa = deep_wts[:,newaxis,newaxis]
+
+                    s=deep_data[self.sens_field]
+                    sens_mean = (s*wa).sum(axis=0)/wsum
+
+                    sens = numpy.zeros( (data.size,2,2) )
+                    sens[:,0,0] = sens_mean[0,0]
+                    sens[:,0,1] = sens_mean[0,1]
+                    sens[:,1,0] = sens_mean[1,0]
+                    sens[:,1,1] = sens_mean[1,1]
+                else:
+                    print("    using sensitivity from this data")
+                    sens = data[self.sens_field].copy()
+
+            print("mean sens:")
+            images.imprint(sens.mean(axis=0), fmt='%g')
+
+            res = ngmix.metacal.jackknife_shear(data[self.g_field],
+                                                sens,
+                                                weights=wts,
+                                                chunksize=chunksize)
+            gmeas=res['shear']
+            gcov=res['shear_cov']
+        elif self.sens_style is None:
+            gmeas = data[self.g_field].mean(axis=0)
+            gcov=numpy.zeros( (2,2) )
+            gcov[0,0] = data[self.g_field][:,0].std()/numpy.sqrt(data.size)
+            gcov[1,1] = data[self.g_field][:,1].std()/numpy.sqrt(data.size)
+        else:
+            raise ValueError("bad sens_style: '%s'" % self.sens_style)
+
+        return gtrue, gmeas, gcov
+
+    def get_weights(self, data):
+        """
+        a good set of weights
+        """
+
+        if self.wstyle=='tracecov':
+
+            if 'g_cov' in self.gcov_field:
+                gcov = data[self.gcov_field]
+            else:
+                cov = data[self.gcov_field]
+                gcov = cov[:,2:2+2, 2:2+2]
+
+            csum=gcov[:,0,0] + gcov[:,1,1]
+
+            wts=1.0/(2*SN**2 + csum)
+
+        elif self.wstyle is None:
+
+            wts=ones(data.size)
+
+        else:
+            raise ValueError("bad weights style: '%s'" % wstyle)
+
+        return wts
+
+
 
     def doplot(self, show=False):
         """
@@ -763,67 +1132,27 @@ class AnalyzerS2N(dict):
             cplt.show()
         return mplt, cplt
 
-    def _calc_m_c(self, dlist):
-        """
-        calculate m and c in bins of s/n
-
-        returns
-        -------
-        s2n, m, merr, c, cerr
-        """
-
+    def _do_hist_many(self, dlist, field, minval, maxval, nbin, dolog=True):
         # get reverse indices for our binning
-        revlist=[self._do_hist1(d) for d in dlist]
+        revlist=[]
+        for d in dlist:
+            rev=self._do_hist1(d[field], minval, maxval, nbin, dolog=dolog)
+            revlist.append(rev)
 
-        m=numpy.zeros( (self.nbin,2) )
-        merr=numpy.zeros( (self.nbin,2) )
-        c=numpy.zeros( (self.nbin,2) )
-        cerr=numpy.zeros( (self.nbin,2) )
-        s2n=numpy.zeros(self.nbin)
+        return revlist
 
-        for i in xrange(self.nbin):
-            wlist=[ rev[ rev[i]:rev[i+1] ] for rev in revlist ]
-
-            s2n_sum=0.0
-            wsum=0.0
-            cut_dlist=[]
-            for d,w in zip(dlist,wlist):
-                td = d[w]
-
-                wts = get_weights(td)
-                s2n_sum += (wts*td['s2n_w']).sum()
-                wsum += wts.sum()
-
-                cut_dlist.append(td)
-
-            res = fit_m_c(cut_dlist, wstyle=self.wstyle)
-            m[i,0],c[i,0] = res['m1'],res['c1']
-            m[i,1],c[i,1] = res['m2'],res['c2']
-            merr[i,0],cerr[i,0] = res['m1err'],res['c1err']
-            merr[i,1],cerr[i,1] = res['m2err'],res['c2err']
-            s2n[i] = s2n_sum/wsum
-
-            print("s2n:",s2n[i])
-            print("m1: %g +/- %g" % (m[i,0],merr[i,0]))
-            print("m2: %g +/- %g" % (m[i,1],merr[i,1]))
-            print("c1: %g +/- %g" % (c[i,0],cerr[i,0]))
-            print("c2: %g +/- %g" % (c[i,1],cerr[i,1]))
-
-        self.s2n=s2n
-        self.m=m
-        self.merr=merr
-        self.c=c
-        self.cerr = cerr
-
-    def _do_hist1(self, data):
+    def _do_hist1(self, data, minval, maxval, nbin, dolog=True):
         import esutil as eu
-        log_s2n = numpy.log10( data['s2n_w'] )
-        minl = numpy.log10( self.min_s2n )
-        maxl = numpy.log10( self.max_s2n )
-        h,rev=eu.stat.histogram(log_s2n,
-                                min=minl,
-                                max=maxl,
-                                nbin=self.nbin,
+
+        if dolog:
+            data = numpy.log10( data )
+            minval = numpy.log10( minval )
+            maxval = numpy.log10( maxval )
+
+        h,rev=eu.stat.histogram(data,
+                                min=minval,
+                                max=maxval,
+                                nbin=nbin,
                                 rev=True)
 
         return rev

@@ -2,6 +2,7 @@ from __future__ import print_function
 import os
 from sys import stderr,stdout
 import time
+from pprint import pprint
 import numpy
 from numpy import array, sqrt, zeros, log, exp, arange
 
@@ -59,6 +60,8 @@ class MedsFitBase(dict):
 
         self['randomize_psf'] = self.get('randomize_psf',False)
 
+        self['fix_centroid_bug'] = self.get('fix_centroid_bug',False)
+
     def set_true_shear(self):
         from . import analyze
         if 'gnum' in self:
@@ -84,6 +87,8 @@ class MedsFitBase(dict):
 
             print("%d:%d  %d:%d" % (dindex, last, mindex, self['end']))
 
+            #print(self.data.size, self.meds.size)
+            #print(dindex, mindex)
             self.data['number'][dindex] = self.meds['number'][mindex]
 
             self.make_psf_observation()
@@ -189,8 +194,7 @@ class MedsFitBase(dict):
 
     def do_round_measures(self):
         rpars=self['round_pars']
-        self.boot.set_round_s2n(self['max_pars'],
-                                fitter_type=rpars['fitter_type'])
+        self.boot.set_round_s2n(fitter_type=rpars['fitter_type'])
 
 
     def get_bootstrapper(self):
@@ -220,7 +224,10 @@ class MedsFitBase(dict):
         weight *= 0
         weight += 1.0/noise**2
 
-        jacob=self.get_jacobian()
+        jacob=self.get_jacobian(type='psf')
+
+        row,col=jacob.get_cen()
+        jacob.set_cen(row-1, col-1)
         self.psf_obs = Observation(image, weight=weight, jacobian=jacob)
 
     def get_psf_ext(self):
@@ -419,13 +426,22 @@ class MedsFitBase(dict):
         plt.write_img(1400,800,pname)
 
 
-    def get_jacobian(self):
+    def get_jacobian(self, type='galaxy'):
         """
         get the jacobian and return a Jacobian object
         """
         jdict = self.meds.get_jacobian(self.mindex,0)
-        jacob = Jacobian(jdict['row0']-1,
-                         jdict['col0']-1,
+
+        row0=jdict['row0']
+        col0=jdict['col0']
+
+        if self['fix_centroid_bug'] and type=='galaxy':
+            print("fixing centroid bug")
+            row0 = row0 - 1
+            col0 = col0 - 1
+
+        jacob = Jacobian(row0,
+                         col0,
                          jdict['dudrow'],
                          jdict['dudcol'],
                          jdict['dvdrow'],
@@ -514,7 +530,6 @@ class MedsFitBase(dict):
         """
         copy some subset of the psf parameters
         """
-        from pprint import pprint
         n=self.get_namer()
 
         data=self.data
@@ -524,7 +539,6 @@ class MedsFitBase(dict):
         mres=self.boot.get_max_fitter().get_result()
 
         res=fitter.get_result()
-        #pprint(res)
 
         if res['flags'] != 0:
             print("    galaxy fit failure")
@@ -561,12 +575,14 @@ class MedsFitBase(dict):
 
         rres = self.boot.get_round_result()
         data['flags_r'][dindex] = rres['flags']
-        data[n('T_r')][dindex]  = rres['pars'][4]
+        data['T_r'][dindex]  = rres['T_r']
         data['s2n_r'][dindex]   = rres['s2n_r']
         data['psf_T_r'][self.dindex] = rres['psf_T_r']
 
         # from the max like result
-        data['max_flags'][dindex] = mres['flags']
+        if 'max_flags' in data.dtype.names:
+            data['max_flags'][dindex] = mres['flags']
+
         data['s2n_w'][dindex] = mres['s2n_w']
         data['chi2per'][dindex] = mres['chi2per']
         data['dof'][dindex] = mres['dof']
@@ -616,7 +632,7 @@ class MedsFitBase(dict):
             ('T_s2n','f8'),
 
             ('flags_r','i4'),
-            (n('T_r'),'f8'),
+            ('T_r','f8'),
             ('s2n_r','f8'),
             ('psf_T_r','f8'),
 
@@ -652,7 +668,7 @@ class MedsFitBase(dict):
         data['T_s2n'] = PDEFVAL
 
         data['flags_r'] = NO_ATTEMPT
-        data[n('T_r')] = DEFVAL
+        data['T_r'] = DEFVAL
         data['s2n_r'] = DEFVAL
         data['psf_T_r'] = DEFVAL
 
@@ -707,6 +723,130 @@ class MedsFitMax(MedsFitBase):
     def make_struct(self):
         super(MedsFitMax,self).make_struct()
         self.data['nfev'] = PDEFVAL
+
+class MedsMetacal(MedsFitMax):
+    def set_defaults(self):
+        super(MedsMetacal,self).set_defaults()
+        
+        self['save_g_sens'] = self.get('save_g_sens',False)
+
+    def fit_galaxy(self):
+        """
+        fit with max like, using a MaxRunner object
+        """
+
+        self.fit_max()
+        self.do_metacal()
+        self.do_round_measures()
+        self.gal_fitter=self.boot.get_max_fitter()
+
+    def do_metacal(self):
+        boot=self.boot
+
+
+        psf_pars=self['psf_pars']
+        model=self['model_pars']['model']
+        max_pars=self['max_pars']
+
+        extra_noise = self.get('extra_noise',None)
+        if extra_noise is not None:
+            print("        extra noise:",extra_noise)
+        boot.fit_metacal_max(psf_pars['model'],
+                             model,
+                             max_pars,
+                             self['psf_Tguess'],
+                             step=self['metacal_pars']['step'],
+                             prior=self['prior'],
+                             ntry=max_pars['ntry'],
+                             extra_noise=extra_noise)
+
+
+        fitter=boot.get_max_fitter() 
+        res=fitter.get_result()
+
+
+        mres = boot.get_metacal_max_result()
+        res.update(mres)
+
+    def copy_galaxy_result(self):
+        """
+        extra copies beyond the default
+        """
+        super(MedsMetacal,self).copy_galaxy_result()
+
+        n=self.get_namer()
+        res=self.gal_fitter.get_result()
+
+        if 'mcal_pars_mean' in res:
+
+            self.data['mcal_pars'][self.dindex,:] = res['mcal_pars_mean']
+            self.data['mcal_pars_cov'][self.dindex,:,:] = res['mcal_pars_mean_cov']
+            self.data['mcal_g'][self.dindex] = res['mcal_g_mean']
+
+            self.data['mcal_s2n_r'][self.dindex] = res['mcal_s2n_r']
+            self.data['mcal_T_r'][self.dindex] = res['mcal_T_r']
+            self.data['mcal_psf_T_r'][self.dindex] = res['mcal_psf_T_r']
+
+            if self['save_g_sens']:
+                self.data['mcal_g_sens'][self.dindex] = res['mcal_g_sens']
+
+    def print_galaxy_result(self):
+        super(MedsMetacal,self).print_galaxy_result()
+        res=self.gal_fitter.get_result()
+
+        if 'mcal_s2n_r' in res:
+            tup=tuple( [res['mcal_s2n_r']] + list(res['mcal_g_sens'].ravel()) )
+            print("    mcal s2n_r: %.1f sens: %g %g %g %g" % tup)
+
+
+    def make_dtype(self):
+        super(MedsMetacal,self).make_dtype()
+
+        np=ngmix.gmix.get_model_npars(self['model_pars']['model'])
+
+        self.dtype += [
+            ('mcal_pars','f8',np),
+            ('mcal_pars_cov','f8', (np,np) ),
+            ('mcal_g','f8',2),
+            ('mcal_s2n_r','f8'),
+            ('mcal_T_r','f8'),
+            ('mcal_psf_T_r','f8'),
+        ]
+
+        if self['save_g_sens']:
+            self.dtype += [('mcal_g_sens','f8',(2,2))]
+
+    def make_struct(self):
+        super(MedsMetacal,self).make_struct()
+        self.data['mcal_pars'] = DEFVAL
+        self.data['mcal_pars_cov'] = PDEFVAL
+        self.data['mcal_g'] = DEFVAL
+        self.data['mcal_s2n_r'] = DEFVAL
+        self.data['mcal_T_r'] = DEFVAL
+        self.data['mcal_psf_T_r'] = DEFVAL
+
+        if self['save_g_sens']:
+            self.data['mcal_g_sens'] = PDEFVAL
+
+
+class MedsMetacalDegrade(MedsMetacal):
+    """
+    in this version we add extra noise and we save the sensitivity
+
+    the idea is to take a high s/n sample and do metacal on it
+    at higher noise
+    """
+    def set_defaults(self):
+        super(MedsMetacalDegrade,self).set_defaults()
+        
+        # extra noise is only in the Degrade subclass
+        extra_noise = self.get('extra_noise',None)
+        if 'extra_noise' is None:
+            raise RuntimeError("you must set extra_noise")
+
+        # we always save the sensitivity; degrad is the high
+        # s/n sample
+        self['save_g_sens'] = True
 
 
 

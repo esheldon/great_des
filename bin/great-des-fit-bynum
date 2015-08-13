@@ -286,6 +286,12 @@ def run_sfitter(conf, checkpoint_data=None):
             fitclass=great_des.sfit.CompositeMedsFitMax
         else:
             fitclass=great_des.sfit.MedsFitMax
+
+    elif conf['fitter']=='metacal':
+        fitclass=great_des.sfit.MedsMetacal
+    elif conf['fitter']=='metacal-degrade':
+        fitclass=great_des.sfit.MedsMetacalDegrade
+
     elif conf['fitter']=='isample':
         if mpars['model']=='cm':
             fitclass=great_des.sfit.CompositeMedsFitISample
