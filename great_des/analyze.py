@@ -23,7 +23,7 @@ SHEARS={0: [ 0.05,  0.  ],
         6: [-0.03536, -0.03536],
         7: [-0.03536,  0.03536]}
 
-def load_data(run, select=True, trim_cols=False, **keys):
+def load_data(run, select=True, trim_cols=False, pqr=False, **keys):
     """
     load all g collated files into a list of structs
     """
@@ -48,6 +48,8 @@ def load_data(run, select=True, trim_cols=False, **keys):
                        'efficiency','neff',
                        's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
                        'psf_T_r']
+            if pqr:
+                keep_cols += ['P','Q','R']
             data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
         dlist.append(data)
     return dlist
@@ -249,7 +251,7 @@ def get_weights(data, wstyle='tracecov'):
 
     return wts
 
-def fit_m_c(dlist, wstyle='tracecov', show=False, doprint=False, get_plt=False):
+def fit_m_c(dlist, pqr=False, wstyle='tracecov', show=False, doprint=False, get_plt=False):
     """
     get m and c
     """
@@ -262,7 +264,7 @@ def fit_m_c(dlist, wstyle='tracecov', show=False, doprint=False, get_plt=False):
 
     nobj=0
     for i,data in enumerate(dlist):
-        gtrue[i,:],gmean,gcov=calc_gmean(data, wstyle=wstyle)
+        gtrue[i,:],gmean,gcov=calc_gmean(data, wstyle=wstyle,pqr=pqr)
         gdiff[i,:] = gmean - gtrue[i,:]
         gdiff_err[i,:] = sqrt(diag(gcov))
 
@@ -564,37 +566,34 @@ def calc_fracdev_s2n_diff(dlist, s2n_edges, field='s2n_r', wstyle='tracecov'):
 
 
 
-def calc_gmean(data, wstyle='tracecov'):
+def calc_gmean(data, pqr=False, wstyle='tracecov'):
     """
     get gtrue, gmeas, gcov
     """
     import jackknife
     gtrue = data['shear_true'].mean(axis=0)
-    gmeas = numpy.zeros(2)
 
-    wts=get_weights(data, wstyle=wstyle)
-
-    '''
-    g1sum = (data['g'][:,0]*wts).sum()
-    g2sum = (data['g'][:,1]*wts).sum()
-
-    g1sensum = (data['g_sens'][:,0]*wts).sum()
-    g2sensum = (data['g_sens'][:,1]*wts).sum()
-
-    gmeas[0]=g1sum/g1sensum
-    gmeas[1]=g2sum/g2sensum
-    print("gmeas:  ",gmeas)
-    '''
-
-    wa=wts[:,newaxis]
-    jdsum=data['g']*wa
-    if 'g_sens' in data.dtype.names:
-        jwsum=data['g_sens']*wa
+    if pqr:
+        import ngmix
+        gmeas, gcov = ngmix.pqr.calc_shear(data['P'],
+                                           data['Q'],
+                                           data['R'])
+        # we expanded about the trugh
+        gmeas += gtrue
     else:
-        jwsum=numpy.ones( data['g'].shape )*wa
-    #print(jdsum.shape)
+        gmeas = numpy.zeros(2)
 
-    gmeas,gcov=jackknife.wjackknife(vsum=jdsum, wsum=jwsum)
+        wts=get_weights(data, wstyle=wstyle)
+
+        wa=wts[:,newaxis]
+        jdsum=data['g']*wa
+        if 'g_sens' in data.dtype.names:
+            jwsum=data['g_sens']*wa
+        else:
+            jwsum=numpy.ones( data['g'].shape )*wa
+        #print(jdsum.shape)
+
+        gmeas,gcov=jackknife.wjackknife(vsum=jdsum, wsum=jwsum)
     #print("gmeas j:",gmeas)
 
     return gtrue, gmeas, gcov
