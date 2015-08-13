@@ -782,6 +782,7 @@ class MedsMetacal(MedsFitMax):
             self.data['mcal_pars'][self.dindex,:] = res['mcal_pars_mean']
             self.data['mcal_pars_cov'][self.dindex,:,:] = res['mcal_pars_mean_cov']
             self.data['mcal_g'][self.dindex] = res['mcal_g_mean']
+            self.data['mcal_g_cov'][self.dindex] = res['mcal_g_cov']
 
             self.data['mcal_s2n_r'][self.dindex] = res['mcal_s2n_r']
             self.data['mcal_T_r'][self.dindex] = res['mcal_T_r']
@@ -808,6 +809,7 @@ class MedsMetacal(MedsFitMax):
             ('mcal_pars','f8',np),
             ('mcal_pars_cov','f8', (np,np) ),
             ('mcal_g','f8',2),
+            ('mcal_g_cov','f8',(2,2)),
             ('mcal_s2n_r','f8'),
             ('mcal_T_r','f8'),
             ('mcal_psf_T_r','f8'),
@@ -821,6 +823,7 @@ class MedsMetacal(MedsFitMax):
         self.data['mcal_pars'] = DEFVAL
         self.data['mcal_pars_cov'] = PDEFVAL
         self.data['mcal_g'] = DEFVAL
+        self.data['mcal_g_cov'] = PDEFVAL
         self.data['mcal_s2n_r'] = DEFVAL
         self.data['mcal_T_r'] = DEFVAL
         self.data['mcal_psf_T_r'] = DEFVAL
