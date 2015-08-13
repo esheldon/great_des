@@ -245,9 +245,18 @@ def run_sfitter(conf, checkpoint_data=None):
 
         cen_prior = CenPrior(0.0, 0.0, cen_width, cen_width)
 
-        g_prior_pars=jp['g_prior_pars']
-        g_prior = ngmix.priors.GPriorGreatDES(pars=jp['g_prior_pars'],
-                                              gmax=1.0)
+        gtype=jp['g_prior_type']
+        if gtype == "ba":
+            print("getting B&A g prior")
+            g_prior=ngmix.priors.GPriorBA(jp['g_prior_sigma'])
+        elif gtype=='gdes':
+            print("getting great-des g prior (this doesn't work well!!)")
+            g_prior_pars=jp['g_prior_pars']
+            g_prior = ngmix.priors.GPriorGreatDES(pars=g_prior_pars,
+                                                  gmax=1.0)
+        else:
+            raise ValueError("bad g prior type: '%s'" % gtype)
+
         g_prior_flat=ngmix.priors.ZDisk2D(1.0)
 
         TF_prior=great_des.files.read_prior(run=jp['TF_prior_run'],
