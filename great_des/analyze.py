@@ -23,9 +23,34 @@ SHEARS={0: [ 0.05,  0.  ],
         6: [-0.03536, -0.03536],
         7: [-0.03536,  0.03536]}
 
-def load_data(run, gnum=None, select=True, trim_cols=False, keep_cols=None, combine=False, **keys):
+
+def load_data(run,
+              gnum=None,
+              columns=None,
+              keep_cols=None,
+              select=True,
+              combine=False,
+              **keys):
     """
     load all g collated files into a list of structs
+
+    parameters
+    ----------
+    run: string
+        run name
+    gnum: int, optional
+        shear number.  If sent just return this one struct
+    columns: list, optional
+        Columns to read from the colllated file.  These are all available
+        for selection
+    keep_cols: list, optional
+        Columns to finally keep from the collated file
+    select: bool, optional
+        If True, do selections.  Default True
+    combine: bool, optional
+        If True, do combine into a single struct.  Default False
+    **keys:
+        Other keywords for selections
     """
     import fitsio
     import esutil as eu 
@@ -42,19 +67,15 @@ def load_data(run, gnum=None, select=True, trim_cols=False, keep_cols=None, comb
         fname=files.get_collated_file(run=run, gnum=i)
 
         print("reading:",fname)
-        data=fitsio.read(fname)
+        data=fitsio.read(fname, columns=columns)
 
         if select:
             print("    selecting")
             data=select_good(data, **keys)
 
-        if trim_cols:
-            if keep_cols is None:
-                keep_cols=['g','g_cov','g_sens','shear_true','fracdev','fracdev_err',
-                           'efficiency','neff',
-                           's2n_w','s2n_r','T_s2n','T_s2n_r','log_T','log_T_r',
-                           'psf_T_r']
+        if keep_cols is not None:
             data=eu.numpy_util.extract_fields(data, keep_cols, strict=False)
+
         dlist.append(data)
 
     if gnum is not None:
@@ -68,6 +89,7 @@ def load_data(run, gnum=None, select=True, trim_cols=False, keep_cols=None, comb
 
 
 def select_good(data,
+                g_field='g',
                 min_T=None,
                 T_range=None,
                 flux_range=None,
@@ -99,12 +121,15 @@ def select_good(data,
         print("    kept %d/%d from flags" % (w.size, data.size))
         logic = logic & elogic
 
-    g = numpy.sqrt( data['g'][:,0]**2 + data['g'][:,1]**2 )
-    elogic = (g < max_g)
-    w,=where(elogic)
-    if w.size != data.size:
-        print("    kept %d/%d from g < %g" % (w.size, data.size, max_g))
-        logic = logic & elogic
+
+    if g_field in data.dtype.names:
+        gv = data[g_field]
+        g = numpy.sqrt( gv[:,0]**2 + gv[:,1]**2 )
+        elogic = (g < max_g)
+        w,=where(elogic)
+        if w.size != data.size:
+            print("    kept %d/%d from %s < %g" % (w.size, data.size, g_field, max_g))
+            logic = logic & elogic
 
     if min_s2n is not None:
         elogic = (data['s2n_w'] > min_s2n)
