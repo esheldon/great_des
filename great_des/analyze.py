@@ -1,7 +1,7 @@
 from __future__ import print_function
 import os
 import numpy
-from numpy import diag, sqrt, newaxis, where, log10, ones, zeros, exp
+from numpy import array, diag, sqrt, newaxis, where, log10, ones, zeros, exp
 from . import files
 
 import esutil as eu
@@ -69,10 +69,30 @@ def load_data(run,
         data=fitsio.read(fname, columns=columns)
 
         names=data.dtype.names
+        fields2add = []
         if 'mcal_T_r' in names and 'mcal_psf_T_r' in names:
+            do_Trat=True
+            fields2add += [('Trat_r','f4')]
+        else:
+            do_Trat=False
+
+        if 'mcal_pars' in names:
+            do_flux=True
+            fields2add += [('mcal_log_flux','f4')]
+        else:
+            do_flux=True
+
+        if len(fields2add) > 0:
+            print("adding fields:",fields2add)
+            data = eu.numpy_util.add_fields(data, fields2add)
+
+        if do_Trat:
             Trat = data['mcal_T_r']/data['mcal_psf_T_r']
-            data = eu.numpy_util.add_fields(data, [('Trat_r','f8')])
-            data['Trat_r'] = Trat
+            data['Trat_r'] = Trat.astype('f4')
+
+        if do_flux:
+            log_flux = data['mcal_pars'][:,5]
+            data['mcal_log_flux'] = log_flux.astype('f4')
 
         if select:
             print("    selecting")
@@ -308,11 +328,12 @@ def quick_load_mcal(run, deep_run, wstyle=None, s2n_range=None, min_Trat=None):
     #s2n_range=[10**0.95, 10**3.0]
 
     # for low s/n run
-    cols = ['mcal_g','mcal_s2n_r','shear_true','flags']
-    kc   = ['mcal_g','mcal_s2n_r','shear_true']
+    cols = ['mcal_pars','mcal_g','mcal_s2n_r','shear_true','flags']
+    kc   = ['mcal_g','mcal_s2n_r','shear_true','mcal_log_flux']
+
     # for deep data
-    dcols=['mcal_g','mcal_g_sens','mcal_s2n_r','flags']
-    dkc  =['mcal_g_sens','mcal_s2n_r']
+    dcols=['mcal_pars','mcal_g','mcal_g_sens','mcal_s2n_r','flags']
+    dkc  =['mcal_g_sens','mcal_s2n_r','mcal_log_flux']
 
     #if wstyle is not None:
     if True:
@@ -371,7 +392,7 @@ class Analyzer(dict):
 
         self.deep_data=deep_data
 
-    def fit_m_c(self, show=False, doprint=False,
+    def fit_m_c(self, show=False, doprint=True,
                 get_plt=False, dlist=None, deep_data=None):
         """
         get m and c
@@ -400,15 +421,22 @@ class Analyzer(dict):
 
             nobj += data.size
 
-        lf1=fitting.fit_line(gtrue[:,0], gdiff[:,0], yerr=gdiff_err[:,0])
-        lf2=fitting.fit_line(gtrue[:,1], gdiff[:,1], yerr=gdiff_err[:,1])
+        nwalkers, burnin, nstep = 200, 2000, 2000
+        lf1=fitting.fit_line(gtrue[:,0], gdiff[:,0], yerr=gdiff_err[:,0],
+                             method='mcmc',
+                             nwalkers=nwalkers,burnin=burnin,nstep=nstep)
+        lf2=fitting.fit_line(gtrue[:,1], gdiff[:,1], yerr=gdiff_err[:,1],
+                             method='mcmc',
+                             nwalkers=nwalkers,burnin=burnin,nstep=nstep)
         fitters=[lf1,lf2]
 
+        res1=lf1.get_result()
+        res2=lf2.get_result()
 
-        m1,c1 = lf1.pars
-        m1err,c1err = lf1.perr
-        m2,c2 = lf2.pars
-        m2err,c2err = lf2.perr
+        m1,c1 = res1['pars']
+        m1err,c1err = res1['perr']
+        m2,c2 = res2['pars']
+        m2err,c2err = res2['perr']
 
         res={'nobj':nobj,
              'm1':m1,
@@ -499,8 +527,7 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
                 tdeep_data=deep_data[ drev[ drev[i]:drev[i+1] ] ]
 
             res = self.fit_m_c(dlist=cut_dlist,
-                               deep_data=tdeep_data,
-                               doprint=True)
+                               deep_data=tdeep_data)
 
             m1[i],m2[i],c1[i],c2[i] = res['m1'],res['m2'],res['c1'],res['c2']
             m1err[i],m2err[i]=res['m1err'],res['m2err']
@@ -522,64 +549,110 @@ c2: %(c2).3g +/- %(c2err).3g""".strip()
                 'c2':c2,
                 'c2err':c2err}
 
-    def plot_m_c_vs(self, res, name, xlog=True, show=False):
+    def plot_m_c_vs(self, res, name, xlog=True, show=False, combine=False, xrng=None):
         """
         result from fit_m_c_vs
+
+        parameters
+        ----------
+        res: dict
+            result from running fit_m_c_vs
+        name: string
+            Name for the variable binned against, e.g. s/n or whatever
+            This is used for the x axis
+        xlog: bool, optional
+            If True, use a log x axis
+        show: bool, optional
+            If True, show the plot on the screen
+
+        returns
+        -------
+        biggles plot object
         """
 
         import biggles
+        biggles.configure('default','fontsize_min',2.0)
         tab=biggles.Table(2,1)
 
         xvals = res['mean']
 
-        if xlog:
-            xrng=[0.75*xvals.min(), 1.5*xvals.max()]
-        else:
-            xrng=[0.9*xvals.min(), 1.1*xvals.max()]
-
-
-        m1c=biggles.Points(xvals, res['m1'],
-                          type='filled circle', color='blue')
-        m1c.label='m1'
-        m1errc=biggles.SymmetricErrorBarsY(xvals, res['m1'], res['m1err'],
-                                           color='blue')
-
-        m2c=biggles.Points(xvals, res['m2'],
-                          type='filled circle', color='red')
-        m2c.label='m2'
-        m2errc=biggles.SymmetricErrorBarsY(xvals, res['m2'], res['m2err'],
-                                           color='red')
-        mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
-
-
-        c1c=biggles.Points(xvals, res['c1'],
-                          type='filled circle', color='blue')
-        c1c.label='c1'
-        c1errc=biggles.SymmetricErrorBarsY(xvals, res['c1'], res['c1err'],
-                                           color='blue')
-
-        c2c=biggles.Points(xvals, res['c2'],
-                          type='filled circle', color='red')
-        c2c.label='c2'
-        c2errc=biggles.SymmetricErrorBarsY(xvals, res['c2'], res['c2err'],
-                                           color='red')
-        ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
-
-        zc=biggles.Curve(xvals, xvals*0)
+        if xrng is None:
+            if xlog:
+                xrng=[0.5*xvals.min(), 1.5*xvals.max()]
+            else:
+                xrng=[0.9*xvals.min(), 1.1*xvals.max()]
 
         mplt=biggles.FramedPlot()
         mplt.xlabel=name
         mplt.ylabel='m'
         mplt.xrange=xrng
+        mplt.yrange=[-0.01,0.01]
         mplt.xlog=xlog
-        mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
 
         cplt=biggles.FramedPlot()
         cplt.xlabel=name
         cplt.ylabel='c'
         cplt.xrange=xrng
+        cplt.yrange=[-0.0015,0.0015]
         cplt.xlog=xlog
-        cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
+
+        if combine:
+
+            m = 0.5*(res['m1'] + res['m2'])
+            c = 0.5*(res['c1'] + res['c2'])
+
+            merr = array([min(m1err,m2err) for m1err,m2err in zip(res['m1err'],res['m2err'])])
+            cerr = array([min(c1err,c2err) for c1err,c2err in zip(res['c1err'],res['c2err'])])
+
+            merr /= sqrt(2)
+            cerr /= sqrt(2)
+
+            mc=biggles.Points(xvals, m, type='filled circle', color='blue')
+            merrc=biggles.SymmetricErrorBarsY(xvals, m, merr, color='blue')
+
+
+            cc=biggles.Points(xvals, c, type='filled circle', color='blue')
+            cerrc=biggles.SymmetricErrorBarsY(xvals, c, cerr, color='blue')
+
+
+            zc=biggles.Curve(xrng, [0,0])
+
+            mplt.add( zc, mc, merrc )
+            cplt.add( zc, cc, cerrc )
+
+        else:
+            m1c=biggles.Points(xvals, res['m1'],
+                              type='filled circle', color='blue')
+            m1c.label='m1'
+            m1errc=biggles.SymmetricErrorBarsY(xvals, res['m1'], res['m1err'],
+                                               color='blue')
+
+            m2c=biggles.Points(xvals, res['m2'],
+                              type='filled circle', color='red')
+            m2c.label='m2'
+            m2errc=biggles.SymmetricErrorBarsY(xvals, res['m2'], res['m2err'],
+                                               color='red')
+            mkey=biggles.PlotKey(0.9,0.9,[m1c,m2c],halign='right')
+
+
+            c1c=biggles.Points(xvals, res['c1'],
+                              type='filled circle', color='blue')
+            c1c.label='c1'
+            c1errc=biggles.SymmetricErrorBarsY(xvals, res['c1'], res['c1err'],
+                                               color='blue')
+
+            c2c=biggles.Points(xvals, res['c2'],
+                              type='filled circle', color='red')
+            c2c.label='c2'
+            c2errc=biggles.SymmetricErrorBarsY(xvals, res['c2'], res['c2err'],
+                                               color='red')
+            ckey=biggles.PlotKey(0.9,0.9,[c1c,c2c],halign='right')
+
+            zc=biggles.Curve(xvals, xvals*0)
+
+            mplt.add( zc, m1c, m1errc, m2c, m2errc, mkey )
+
+            cplt.add( zc, c1c, c1errc, c2c, c2errc, ckey )
 
         tab[0,0] = mplt
         tab[1,0] = cplt
