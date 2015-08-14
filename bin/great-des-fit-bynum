@@ -269,18 +269,26 @@ def run_sfitter(conf, checkpoint_data=None):
             conf['fracdev_prior']=great_des.files.read_prior(run=jp['fracdev_prior_run'],
                                                              partype=jp['fracdev_partype'])
     else:
-        cen_prior=great3.nfit.get_cen_prior(mpars['cen_prior_type'],
-                                            pars=mpars['cen_prior_pars'])
+        pp = mpars['sep_prior']
 
-        g_prior=great3.nfit.get_g_prior(mpars['g_prior_type'],
-                                        pars=mpars['g_prior_pars'])
-        T_prior=great3.nfit.get_T_prior(mpars['T_prior_type'],
-                                        pars=mpars['T_prior_pars'])
-        counts_prior=great3.nfit.get_counts_prior(mpars['counts_prior_type'],
-                                                  pars=mpars['counts_prior_pars'])
+        cp=pp['cen']
+        cen_prior = CenPrior(0.0, 0.0, cp['width'], cp['width'])
+        
+        gp = pp['g']
+        g_prior=ngmix.priors.GPriorBA(gp['sigma'])
 
-        print("g_prior:",g_prior)
-        print("T_prior:",T_prior)
+        Tp = pp['T']
+        fname=great_des.files.get_prior_file(run=Tp['run'], partype=Tp['partype'])
+        T_prior = ngmix.gmix.GMixND()
+        T_prior.load_mixture(fname)
+        #T_prior=great_des.files.read_prior(run=Tp['run'], partype=Tp['partype'])
+
+        Fp = pp['F']
+        counts_prior=ngmix.priors.TwoSidedErf(*Fp['pars'])
+
+        print("cen_prior:   ",cen_prior)
+        print("g_prior:     ",g_prior)
+        print("T_prior:     ",T_prior)
         print("counts_prior:",counts_prior)
         conf['prior']=PriorSimpleSep(cen_prior,
                                      g_prior,
