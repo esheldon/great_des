@@ -80,7 +80,7 @@ def load_data(run,
             do_flux=True
             fields2add += [('mcal_log_flux','f4')]
         else:
-            do_flux=True
+            do_flux=False
 
         if len(fields2add) > 0:
             print("adding fields:",fields2add)
